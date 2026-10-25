@@ -807,7 +807,12 @@ var settles = {};
 				if (!headDbg[i]) headDbg[i] = {};
 				headDbg[i].x = head.x; headDbg[i].y = head.y; headDbg[i].a = head.angle;
 				var headPt = { x: head.x, y: head.y };
-				var tailS = M.wrapArc ? M.wrapArc(track, headS - lenNow) : headS - lenNow;
+				// The tail sits *behind* the head, and behind depends on the direction:
+				// with the clockwise default (-1) the band travels towards smaller s, so
+				// the tail is at headS + lenNow. Dropping the direction factor put the
+				// gradient's start on the wrong side of the head, which padded the whole
+				// ribbon with the last stop - every palette rendered flat white.
+				var tailS = M.wrapArc ? M.wrapArc(track, headS - dirNow * lenNow) : headS - dirNow * lenNow;
 				var tailPt = track.at(tailS);
 				lastLen[i] = lenNow;
 				nd.path.setAttribute("d", d);
