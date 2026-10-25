@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Rimlight · 调试台</title>
+<meta http-equiv="refresh" content="0; url=lab/rimlight-lab.html">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(120% 120% at 30% 20%, #17253c 0%, #0f1826 45%, #080b11 100%);
+    color: #dbe6ff;
+    font: 15px/1.6 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .card { text-align: center; padding: 32px; max-width: 460px; }
+  .card img { width: 104px; height: 104px; display: block; margin: 0 auto 20px; }
+  h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: 0.02em; }
+  p { margin: 0 0 22px; color: #9fb0cc; font-size: 14px; }
+  a.button {
+    display: inline-block; padding: 10px 22px; border-radius: 999px;
+    color: #eaf2ff; text-decoration: none; font-size: 14px;
+    background: linear-gradient(120deg, #2f6bff, #5b8dff);
+    box-shadow: 0 6px 24px rgba(60, 120, 255, 0.35);
+  }
+  a.button:hover { filter: brightness(1.08); }
+  .hint { margin-top: 18px; font-size: 12px; color: #6d7f9c; }
+  .hint code { color: #9fb0cc; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img src="icon.svg" alt="Rimlight">
+    <h1>Rimlight</h1>
+    <p>沿窗口边缘流动的流星式光带 · 调试台</p>
+    <a class="button" href="lab/rimlight-lab.html">打开调试台</a>
+    <div class="hint">未自动跳转时点上方按钮，或直接访问 <code>lab/rimlight-lab.html</code></div>
+  </div>
+  <script>location.replace("lab/rimlight-lab.html");</script>
+</body>
+</html>
