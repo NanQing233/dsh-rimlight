@@ -5,6 +5,12 @@
 <p align="center">为 DeepSeek Harness 提供「思考时沿窗口边缘流动的流星光带」的轻量美化插件。</p>
 
 <p align="center">
+  <a href="https://polang233.github.io/dsh-plugin-index/zh/plugins/dsh-rimlight/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdshopen.org%2Fbadge%2Fdsh-rimlight.json&amp;style=flat-square" alt="开放插件市场" height="20"></a>
+  <a href="https://www.npmjs.com/package/dsh-rimlight"><img src="https://img.shields.io/npm/v/dsh-rimlight?style=flat-square&amp;label=npm" alt="npm 版本" height="20"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/dsh-rimlight?style=flat-square" alt="许可证" height="20"></a>
+</p>
+
+<p align="center">
   <strong>简体中文</strong> ·
   <a href="README.en.md">English</a>
 </p>
@@ -12,8 +18,7 @@
 <p align="center">
   <a href="https://xn--de-gj5f71e.luxe">预览效果</a> ·
   <a href="#安装">安装</a> ·
-  <a href="#设置">设置</a> ·
-  <a href="#许可证">许可证</a>
+  <a href="#设置">设置</a>
 </p>
 
 ## 效果

@@ -5,6 +5,12 @@
 <p align="center">A lightweight cosmetic plugin for DeepSeek Harness: a comet-like light band that flows along the window edge while a session is thinking.</p>
 
 <p align="center">
+  <a href="https://polang233.github.io/dsh-plugin-index/zh/plugins/dsh-rimlight/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdshopen.org%2Fbadge%2Fdsh-rimlight.json&amp;style=flat-square" alt="Open Plugin Market" height="20"></a>
+  <a href="https://www.npmjs.com/package/dsh-rimlight"><img src="https://img.shields.io/npm/v/dsh-rimlight?style=flat-square&amp;label=npm" alt="npm version" height="20"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/dsh-rimlight?style=flat-square" alt="license" height="20"></a>
+</p>
+
+<p align="center">
   <a href="README.md">简体中文</a> ·
   <strong>English</strong>
 </p>
@@ -12,8 +18,7 @@
 <p align="center">
   <a href="https://xn--de-gj5f71e.luxe">Live preview</a> ·
   <a href="#installation">Install</a> ·
-  <a href="#settings">Settings</a> ·
-  <a href="#license">License</a>
+  <a href="#settings">Settings</a>
 </p>
 
 ## Effect
