@@ -194,3 +194,9 @@ dsh-rimlight/
 ## License
 
 This project is licensed under the [Mozilla Public License 2.0](LICENSE) (MPL-2.0).
+
+---
+
+<p align="center">
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&amp;logo=deepseek&amp;logoColor=white" alt="powered by dsh" height="20"></a>
+</p>
