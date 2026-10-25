@@ -362,7 +362,7 @@ var settles = {};
 	// instead of leaving a control that visibly does nothing.
 	function syncThemeEnabled() {
 		try {
-			themeEl.disabled = !!multi;
+			themeEl.disabled = false;
 			themeEl.title = multi
 				? "每条光带各自配色开启时，单色选择不生效"
 				: "";
@@ -380,7 +380,17 @@ var settles = {};
 		// advance(), so the tail slides around instead of snapping.
 		state.reply = replyEl.checked;
 	});
-	themeEl.addEventListener("change", function () { themeKey = themeEl.value; softRebuild(); });
+	themeEl.addEventListener("change", function () {
+		// Picking one palette is an explicit request for that colour, so it turns
+		// off "one colour per band" instead of silently doing nothing.
+		if (multi) {
+			multi = false;
+			multiEl.checked = false;
+		}
+		themeKey = themeEl.value;
+		syncThemeEnabled();
+		softRebuild();
+	});
 
 	document.getElementById("btn-think").addEventListener("click", function () {
 		state.mode = "thinking";
