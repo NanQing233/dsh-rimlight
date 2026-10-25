@@ -331,6 +331,7 @@ var settles = {};
 		themeEl.appendChild(o);
 	});
 	themeEl.value = themeKey;
+	syncThemeEnabled();
 
 	function softRebuild() {
 		buildDefs();
@@ -352,8 +353,20 @@ var settles = {};
 		buildScene();
 	});
 	glowEl.addEventListener("change", function () { state.glow = glowEl.checked; softRebuild(); });
+	// With "one colour per band" on, the single-palette select has no say: say so
+	// instead of leaving a control that visibly does nothing.
+	function syncThemeEnabled() {
+		try {
+			themeEl.disabled = !!multi;
+			themeEl.title = multi
+				? "每条光带各自配色开启时，单色选择不生效"
+				: "";
+		} catch (e) { /* noop */ }
+	}
+
 	multiEl.addEventListener("change", function () {
 		multi = multiEl.checked;
+		syncThemeEnabled();
 		buildDefs();
 		buildBands();
 	});
@@ -452,6 +465,7 @@ var settles = {};
 		themeEl.value = d.theme;
 		glowEl.checked = d.glow;
 		multiEl.checked = d.multi;
+		syncThemeEnabled();
 		replyEl.checked = d.reply;
 		var speedElR = document.getElementById("speed");
 		if (speedElR) {
