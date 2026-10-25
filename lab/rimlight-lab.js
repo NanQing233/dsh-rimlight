@@ -96,7 +96,7 @@
 		manualStop: false,
 		p: 0,
 		reply: false,          // waiting for the user -> the band turns back
-		dirNow: 1,             // eased direction, never a hard flip
+		dirNow: -1,            // eased direction, never a hard flip (-1 = clockwise, like the plugin)
 	};
 	var orbit = { mode: "off" };
 	var pendingGhost = 0;
@@ -437,7 +437,7 @@ var settles = {};
 		// go back through sweepInv or band 0 lands somewhere else entirely.
 		state.p = cornerPh === null ? 0 : (M.sweepInv ? wrap1(M.sweepInv(cornerPh)) : cornerPh);
 		state.reply = d.reply;
-		state.dirNow = 1;
+		state.dirNow = -1;
 		state.mode = "idle";
 		state.manualStop = false;
 		state.answerGrowAt = 0;
@@ -717,7 +717,7 @@ var settles = {};
 
 		// Reverse (waiting for the user) is eased in, so the tail swaps sides
 		// smoothly instead of flipping in one frame.
-		var dirTarget = state.reply ? -1 : 1;
+		var dirTarget = state.reply ? 1 : -1;
 		state.dirNow += (dirTarget - state.dirNow) * Math.min(1, dt / 240);
 		if (Math.abs(dirTarget - state.dirNow) < 0.01) state.dirNow = dirTarget;
 		var dirNow = state.dirNow;
@@ -870,7 +870,7 @@ var settles = {};
 			"px/ms  ring-avg=" + (track.total / lapMs).toFixed(2) +
 			"  cap=" + (M.transitCap ? M.transitCap(phases[0] || 0, track.total, lapMs).toFixed(2) : "?") + "px/ms" +
 			"\ntheme=" + themeKey + (multi ? " (per band: " + bandOrder.slice(0, clamp(n, 1, 4)).join(",") + ")" : "") +
-			"  glow=" + state.glow + "  dir=" + (state.dirNow < -0.02 ? "ccw" : "cw") +
+			"  glow=" + state.glow + "  dir=" + (state.dirNow < -0.02 ? "cw" : "ccw") +
 			"\norbit=" + orbit.mode +
 			"  ring=" + (state.mode === "streaming" ? "yes" : "-") +
 			"  corner=" + (cornerPh === null ? "null" : cornerPh.toFixed(3)) +
