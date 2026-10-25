@@ -101,6 +101,7 @@
 	};
 	var orbit = { mode: "off" };
 	var pendingGhost = 0;
+	var pendingRetire = null;
 	// Diagnostics: how many ghosts were spawned and where the first one is in
 	// its hop. Without these the readout cannot tell "never spawned" from
 	// "already finished".
@@ -139,9 +140,16 @@ var settles = {};
 	// from a different vendor palette, exactly like the plugin does per session.
 	var bandOrder = ["deepseek", "kimi", "nvidia", "qwen"];
 	var multi = false;
+	// Palette chosen in each band's own select. Kept outside `state` so a
+	// rebuild (buildBands) cannot wipe the picks.
+	var bandKeys = [];
+	function bandKey(i) {
+		var k = bandKeys[i];
+		return (k && M.THEMES[k]) ? k : bandOrder[i % bandOrder.length];
+	}
 	function bandTheme(i) {
 		if (!multi) return theme();
-		return M.THEMES[bandOrder[i % bandOrder.length]] || theme();
+		return M.THEMES[bandKey(i)] || theme();
 	}
 
 	function wrap1(v) { return ((v % 1) + 1) % 1; }
@@ -353,6 +361,7 @@ var settles = {};
 		state.count = +countEl.value;
 		document.getElementById("v-count").textContent = state.count;
 		softRebuild();
+		syncThemeEnabled();
 	});
 	trailEl.addEventListener("input", function () {
 		state.trail = +trailEl.value;
@@ -369,10 +378,46 @@ var settles = {};
 	function syncThemeEnabled() {
 		try {
 			themeEl.disabled = false;
-			themeEl.title = multi
-				? "每条光带各自配色开启时，单色选择不生效"
-				: "";
+			themeEl.title = "";
+			var one = document.getElementById("theme-one");
+			var per = document.getElementById("band-themes");
+			if (one) one.hidden = !!multi;
+			if (per) per.hidden = !multi;
+			if (multi) renderBandSelectors();
 		} catch (e) { /* noop */ }
+	}
+
+	// One palette select per running band, in band order. The rows follow the
+	// band count, so "再加一条" grows the list and a finished band shrinks it.
+	function renderBandSelectors() {
+		var host = document.getElementById("band-rows");
+		if (!host) return;
+		var n = clamp(state.count, 1, 4);
+		while (host.firstChild) host.removeChild(host.firstChild);
+		for (var i = 0; i < n; i++) {
+			var row = document.createElement("div");
+			row.className = "brow";
+			var tag = document.createElement("span");
+			tag.textContent = "光带 " + (i + 1);
+			var sel = document.createElement("select");
+			sel.setAttribute("data-band", String(i));
+			themeKeys.forEach(function (k) {
+				var o = document.createElement("option");
+				o.value = k;
+				o.textContent = M.THEMES[k].label || k;
+				sel.appendChild(o);
+			});
+			sel.value = bandKey(i);
+			sel.addEventListener("change", function (ev) {
+				var idx = +ev.target.getAttribute("data-band");
+				bandKeys[idx] = ev.target.value;
+				buildDefs();
+				buildBands();
+			});
+			row.appendChild(tag);
+			row.appendChild(sel);
+			host.appendChild(row);
+		}
 	}
 
 	multiEl.addEventListener("change", function () {
@@ -670,9 +715,44 @@ var settles = {};
 		spawnGhost();
 	}
 
+	function liveBands() {
+		var out = [];
+		var n = clamp(state.count, 1, 4);
+		for (var i = 0; i < n && i < bandNodes.length; i++) {
+			if (!bandNodes[i].gone) out.push(i);
+		}
+		return out;
+	}
+
+	// The finish actions do not invent a light: they take one of the bands that
+	// is already on the edge (random pick), let that one leave, lap its target
+	// and fade, then drop it for real - the same hand-off the plugin performs
+	// when a conversation stops. Nothing on the edge? Put one there first and
+	// run the action a beat later.
 	function spawnGhost(toRow) {
 		if (!track) return;
-		var from = lastHeads[0] || { x: W / 2, y: H / 2 };
+		var live = liveBands();
+		if (!live.length) {
+			state.mode = "thinking";
+			state.manualStop = false;
+			orbit = { mode: "off" };
+			bornAll(clock);
+			pendingRetire = { at: clock + 460, toRow: toRow };
+			return;
+		}
+		var k = live[Math.floor(Math.random() * live.length)];
+		var nd = bandNodes[k];
+		var t = bandTheme(k) || theme();
+		var from = lastHeads[k] || { x: W / 2, y: H / 2 };
+		nd.gone = true;
+		try {
+			nd.g.style.transition = "opacity 130ms linear";
+			nd.g.style.opacity = "0";
+		} catch (e) { /* noop */ }
+		if (nd.edge) nd.edge.setAttribute("d", "");
+		if (nd.rim) nd.rim.setAttribute("d", "");
+		if (nd.lanes) for (var q1 = 0; q1 < nd.lanes.length; q1++) nd.lanes[q1].setAttribute("d", "");
+
 		var ring = composerRing();
 		if (toRow) {
 			var rowEl = document.querySelector('[data-demo-row="bg1"]');
@@ -683,19 +763,22 @@ var settles = {};
 			}
 		}
 		var path = M.returnPath(from, ring);
-		var t = theme();
 		var g = el("g", {});
-		var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-0)", style: "filter:blur(5px);opacity:0" });
-		var path2 = el("path", { d: "", fill: t.core, opacity: "1" });
+		g.style.opacity = "0";
+		// Same gradient the band itself was painting with, so the colour never
+		// changes mid-flight (per-band palettes included).
+		var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-" + k + ")", style: "filter:blur(5px);opacity:0" });
+		var path2 = el("path", { d: "", fill: "url(#lab-grad-" + k + ")", opacity: "1" });
 		var head = el("circle", { cx: "0", cy: "0", r: half(), fill: t.core, opacity: "1" });
 		g.appendChild(glow);
 		g.appendChild(path2);
 		g.appendChild(head);
 		ghostHost.appendChild(g);
+		var grad = defs ? defs.querySelector("#lab-grad-" + k) : null;
 		// The speed profile is 1 - A*cos(2*pi*p): its slope peaks a quarter lap off
 		// a corner. Wait for the next peak and leave carrying exactly that speed.
 		var amp = M.getSweepAmp ? M.getSweepAmp() : 0.62;
-		var ph0 = phases[0] == null ? 0 : phases[0];
+		var ph0 = phases[k] == null ? 0 : phases[k];
 		var sgn = state.dirNow < 0 ? -1 : 1;
 		var pick = null;
 		[0.25, 0.75].forEach(function (quarter) {
@@ -708,7 +791,51 @@ var settles = {};
 		// px / (px/ms) is already ms; scaling by 1000 here made the hop ~26min long.
 		var dur = Math.max(240, (path.leg + path.lap) / (exitSpeed / 1.57));
 		ghostSpawns += 1;
-	ghosts.push({ g: g, path: path2, head: head, glow: glow, at: clock + wait, dur: dur, wait: wait, uNow: 0, pathData: path });
+		ghosts.push({ g: g, path: path2, head: head, glow: glow, grad: grad, slot: k, at: clock + wait, dur: dur, wait: wait, uNow: 0, pathData: path });
+	}
+
+	// The band is gone for good: the survivors keep their phases and re-space
+	// over the usual settle window, so nothing jumps when the count drops.
+	function finishRetire(slot) {
+		var keep = [];
+		for (var i = 0; i < bandNodes.length; i++) {
+			if (i === slot || bandNodes[i].gone) continue;
+			if (phases[i] == null) continue;
+			keep.push(phases[i]);
+		}
+		reseedFrom(keep);
+	}
+
+	function reseedFrom(keepPhases) {
+		var n = keepPhases.length;
+		var label = document.getElementById("v-count");
+		if (!n) {
+			state.count = 1;
+			countEl.value = "1";
+			if (label) label.textContent = "1";
+			bornAll(clock);
+			syncThemeEnabled();
+			return;
+		}
+		state.count = n;
+		countEl.value = String(n);
+		if (label) label.textContent = String(n);
+		buildDefs();
+		buildBands();
+		phases = {};
+		settles = {};
+		pending = {};
+		shifts = {};
+		lenState = {};
+		births = {};
+		grabs = {};
+		catches = {};
+		for (var i = 0; i < n; i++) {
+			phases[i] = wrap1(keepPhases[i]);
+			lenState[i] = { len: state.trail, at: clock };
+			births[i] = clock - 100000;
+		}
+		syncThemeEnabled();
 	}
 
 	function clearGhosts() {
@@ -753,6 +880,11 @@ var settles = {};
 		var h = half();
 		var t = theme();
 		var n = clamp(state.count, 1, 4);
+		if (pendingRetire && clock >= pendingRetire.at) {
+			var pr = pendingRetire;
+			pendingRetire = null;
+			spawnGhost(pr.toRow);
+		}
 		maybeFinish();
 
 		// Reverse (waiting for the user) is eased in, so the tail swaps sides
@@ -771,6 +903,7 @@ var settles = {};
 			var warpedBaseL = wrap1(M.sweep(wrap1(state.p)));
 			for (var i = 0; i < nB && i < bandNodes.length; i++) {
 				var nd = bandNodes[i];
+				if (nd.gone) continue;
 				var bt = bandTheme(i);
 				var targetPh = wrap1(warpedBaseL + i / nB);
 				var stl = settles[i];
@@ -885,7 +1018,7 @@ var settles = {};
 		for (var gi = ghosts.length - 1; gi >= 0; gi--) {
 			var gh = ghosts[gi];
 			if (now < gh.at) { gh.g.style.opacity = "0"; gh.uNow = 0; continue; }
-			gh.g.style.opacity = "";
+			gh.g.style.opacity = String(Math.min(1, (now - gh.at) / 130));
 			var u = Math.min(1, (now - gh.at) / gh.dur);
 			gh.uNow = u;
 			var e = easeInOutCubic(u);
@@ -895,6 +1028,13 @@ var settles = {};
 			var pts3 = [];
 			for (var q = 0; q < 34; q++) pts3.push(gh.pathData.at(Math.max(0, s - tl2 * (q / 33))));
 			gh.path.setAttribute("d", pts3.length > 1 ? M.polyRibbon(pts3, h) : "");
+			if (gh.grad) {
+				var tailP = gh.pathData.at(Math.max(0, s - tl2));
+				gh.grad.setAttribute("x1", tailP.x.toFixed(1));
+				gh.grad.setAttribute("y1", tailP.y.toFixed(1));
+				gh.grad.setAttribute("x2", pl.x.toFixed(1));
+				gh.grad.setAttribute("y2", pl.y.toFixed(1));
+			}
 			var fade = u < 0.62 ? 1 : Math.max(0, 1 - (u - 0.62) / 0.38);
 			gh.path.setAttribute("opacity", String(fade));
 			gh.head.setAttribute("cx", pl.x.toFixed(1));
@@ -907,6 +1047,7 @@ var settles = {};
 			if (u >= 1) {
 				gh.g.remove();
 				ghosts.splice(gi, 1);
+				finishRetire(gh.slot);
 			}
 		}
 
@@ -967,6 +1108,7 @@ var settles = {};
 				  "  leg=" + Math.round(ghosts[0].pathData.leg) + " total=" + Math.round(ghosts[0].pathData.total) +
 				  " dlen=" + ((ghosts[0].path.getAttribute("d") || "").length) +
 				  " at=" + ghosts[0].head.getAttribute("cx") + "," + ghosts[0].head.getAttribute("cy")
+
 				: "");
 	}
 
@@ -1060,6 +1202,9 @@ var settles = {};
 		}
 		if (q.p) { state.p = clamp(+q.p, 0, 1); frozen = true; }
 		buildScene();
+		// The palette groups follow `multi`, and a URL flag sets it after the
+		// one-time sync above, so re-run it once the params are all applied.
+		syncThemeEnabled();
 		if (pendingGhost) {
 			spawnGhost(true);
 			for (var wg = 0; wg < pendingGhost; wg += 16.7) advance(16.7);

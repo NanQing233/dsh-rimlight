@@ -78,7 +78,7 @@
 		--readout-fill: linear-gradient(158deg, rgba(28,45,72,0.80), rgba(15,27,45,0.66));
 		--readout-ink: #b9cee9;
 		--readout-border: rgba(150,192,255,0.22);
-		--footer-bg: linear-gradient(180deg, rgba(14,24,40,0.42), rgba(8,15,26,0.62));
+		--footer-bg: linear-gradient(180deg, rgba(14,24,40,0.26), rgba(8,15,26,0.46));
 		--footer-border: rgba(140,180,240,0.18);
 		--footer-ink: #9db3d2;
 		--footer-link: #d3e3fa;
@@ -189,7 +189,7 @@
 		--readout-fill: linear-gradient(158deg, rgba(242,251,255,0.70), rgba(210,234,255,0.34));
 		--readout-ink: #2f4a6e;
 		--readout-border: rgba(255,255,255,0.88);
-		--footer-bg: linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.52));
+		--footer-bg: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.38));
 		--footer-border: rgba(255,255,255,0.80);
 		--footer-ink: #5c729a;
 		--footer-link: #2b4468;
@@ -241,6 +241,7 @@
 	* { box-sizing: border-box; }
 	html, body { height: 100%; }
 	body {
+		position: relative;
 		margin: 0;
 		color: var(--ink);
 		font: 13px/1.5 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
@@ -347,7 +348,7 @@
 		opacity: 0.75;
 	}
 
-	#stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 20px; min-width: 0; z-index: 1; }
+	#stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 20px 20px 74px; min-width: 0; z-index: 1; }
 
 	/* ---------------- the mock app window (stays dark: the band lives on it) ---------------- */
 	/* ---------------- the mock app window (theme aware) ---------------- */
@@ -436,7 +437,7 @@
 	/* ---------------- control panel ---------------- */
 	#panel {
 		position: relative;
-		width: 330px; flex: 0 0 330px; padding: 16px; overflow-y: auto; z-index: 1;
+		width: 330px; flex: 0 0 330px; padding: 16px 16px 58px; overflow-y: auto; z-index: 1;
 		background: var(--panel-fill);
 		-webkit-backdrop-filter: blur(30px) saturate(185%);
 		backdrop-filter: blur(30px) saturate(185%);
@@ -467,6 +468,9 @@
 		box-shadow: var(--card-shadow);
 		transition: background 320ms ease, border-color 320ms ease, box-shadow 320ms ease;
 	}
+	#band-themes .brow { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+	#band-themes .brow span { flex: 0 0 42px; font-size: 11px; color: var(--label-ink); letter-spacing: 0.04em; }
+	#band-themes .brow select { flex: 1 1 auto; min-width: 0; }
 	#panel .grp > label { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--label-ink); margin-bottom: 9px; letter-spacing: 0.05em; font-weight: 600; }
 
 	/* buttons: glass chips with a bevel rim that catches the light */
@@ -573,13 +577,14 @@
 	#lab { flex: 1 1 auto; display: flex; min-height: 0; z-index: 1; }
 
 	#footer {
-		flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px;
+		position: absolute; left: 0; right: 0; bottom: 0;
+		display: flex; align-items: center; justify-content: center; gap: 10px;
 		padding: 9px 16px 13px; font-size: 12px; color: var(--footer-ink); letter-spacing: 0.01em;
 		border-top: 1px solid var(--footer-border);
 		background: var(--footer-bg);
 		-webkit-backdrop-filter: blur(18px) saturate(160%);
 		backdrop-filter: blur(18px) saturate(160%);
-		z-index: 2;
+		z-index: 6;
 		transition: background 320ms ease, color 240ms ease, border-color 320ms ease;
 	}
 	#footer a {
@@ -687,6 +692,21 @@
 		<button id="btn-reset">重置</button>
 		<div class="hint">这一版对应发布分支：光带只在左下角出生、尾巴从 0 长出；输出阶段沿边框绕圈，不再离开边框去绕答案。</div>
 	</div>
+	<div class="grp" id="theme-one">
+		<label>模型配色</label>
+		<select id="theme"></select>
+	</div>
+	<div class="grp" id="band-themes" hidden>
+		<label>各光带配色</label>
+		<div id="band-rows"></div>
+		<div class="hint">每条光带各挑一套配色；关掉「每条光带各自配色」会自动隐藏这一组，只剩上面的单色选择。</div>
+	</div>
+	<div class="grp">
+		<label>显示</label>
+		<div class="chk"><input type="checkbox" id="glow" checked><span>边缘泛光</span></div>
+		<div class="chk"><input type="checkbox" id="multi"><span>每条光带各自配色</span></div>
+		<div class="chk"><input type="checkbox" id="reply"><span>等待回复（反向旋转）</span></div>
+	</div>
 	<div class="grp">
 		<label>正在运行的对话数 <span class="val" id="v-count">1</span></label>
 		<input type="range" id="count" min="1" max="4" step="1" value="1">
@@ -709,13 +729,6 @@
 	<div class="grp">
 		<label>粗细 <span class="val" id="v-thick">6</span></label>
 		<input type="range" id="thick" min="2" max="24" step="1" value="6">
-	</div>
-	<div class="grp">
-		<label>模型配色</label>
-		<select id="theme"></select>
-		<div class="chk"><input type="checkbox" id="glow" checked><span>边缘泛光</span></div>
-		<div class="chk"><input type="checkbox" id="multi"><span>每条光带各自配色</span></div>
-		<div class="chk"><input type="checkbox" id="reply"><span>等待回复（反向旋转）</span></div>
 	</div>
 	<div class="grp">
 		<label>读数</label>
@@ -765,8 +778,8 @@
 		};
 	})();
 </script>
-<script src="../client.js?v=20261025g"></script>
-<script src="./rimlight-lab.js?v=20261025g"></script>
+<script src="../client.js?v=20261025h"></script>
+<script src="./rimlight-lab.js?v=20261025h"></script>
 <script>
 	(function () {
 		var sw = document.getElementById("sweep");
