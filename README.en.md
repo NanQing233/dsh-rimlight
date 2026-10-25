@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/icon-256.png" width="112" alt="Rimlight icon"></p>
 
-<p align="center">A lightweight cosmetic plugin for the DeepSeek Harness desktop client: a comet-like light band that flows along the window edge while a session is thinking.</p>
+<p align="center">A lightweight cosmetic plugin for DeepSeek Harness: a comet-like light band that flows along the window edge while a session is thinking.</p>
 
 <p align="center">
   <a href="README.md">简体中文</a> ·
@@ -69,7 +69,7 @@ Model detection uses the model id and name first, and the provider only as a fal
 
 ## Installation
 
-Requirement: the **DeepSeek Harness desktop client**. The plugin is a standard DSH bundle package (`cordis.patch.yml` plus a client module) and can be installed into any profile.
+Requirement: **DeepSeek Harness**. The plugin is a standard DSH bundle package (`cordis.patch.yml` plus a client module) and can be installed into any profile.
 
 ### Option 1: From the plugins page (recommended)
 
@@ -180,7 +180,8 @@ dsh-rimlight/
 
 ## Compatibility
 
-- Runs only inside the **DeepSeek Harness desktop client** (web carrier). Opening the DSH page in a plain browser does not load client plugins.
+- Runs in the client rendering layer of DSH and loads with the client once installed into a profile.
+- A native caption-button strip would paint over the drawing, so the plugin cuts that area out with a feathered ramp; since 1.0.1 the cut is decided at runtime, so environments without such a strip (a plain browser tab, for example) no longer blank it.
 - Depends on public modules provided by the host (`react`, `@deepseek-ai/dsh-client-ui-*`, `@deepseek-ai/schemastery`). These modules are neither bundled nor redistributed.
 - The band is drawn on a separate overlay: it does not participate in layout and does not capture pointer events.
 - Detecting the "final answer" relies on the DOM structure of the host UI. If a host upgrade renames internal class names, that detection can stop working; the plugin then degrades to always running along the frame, without affecting client stability.

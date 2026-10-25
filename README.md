@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/icon-256.png" width="112" alt="Rimlight icon"></p>
 
-<p align="center">为 DeepSeek Harness 桌面客户端提供「思考时沿窗口边缘流动的流星光带」的轻量美化插件。</p>
+<p align="center">为 DeepSeek Harness 提供「思考时沿窗口边缘流动的流星光带」的轻量美化插件。</p>
 
 <p align="center">
   <strong>简体中文</strong> ·
@@ -69,7 +69,7 @@
 
 ## 安装
 
-要求：**DeepSeek Harness 桌面版**。插件是标准的 DSH bundle 包（`cordis.patch.yml` + 客户端模块），装进任一 profile 即可。
+要求：**DeepSeek Harness**。插件是标准的 DSH bundle 包（`cordis.patch.yml` + 客户端模块），装进任一 profile 即可。
 
 ### 方式一：插件页安装（推荐）
 
@@ -178,7 +178,8 @@ dsh-rimlight/
 
 ## 兼容性
 
-- 仅在 **DeepSeek Harness 桌面客户端**内运行（web carrier）；以浏览器直接访问 DSH 页面时不会加载客户端插件。
+- 运行在 DSH 的客户端渲染层，装进 profile 后随客户端加载。
+- 右上角原生窗控条会遮住绘制内容，插件据此挖掉那块并留羽化；1.0.1 起改为运行时判断，没有原生窗控条时（例如普通浏览器标签页）不再挖洞。
 - 依赖宿主提供的公开模块（`react`、`@deepseek-ai/dsh-client-ui-*`、`@deepseek-ai/schemastery`），不打包、不重分发这些模块。
 - 光带绘制在独立覆盖层，不参与布局，不接收指针事件。
 - 「最终输出」的判定依赖宿主界面的 DOM 结构；宿主版本升级后若内部类名变化，该判定可能失效，此时插件会退化为始终沿边框运行，不影响客户端稳定性。

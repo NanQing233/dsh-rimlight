@@ -1,6 +1,6 @@
 {
   "name": "dsh-rimlight",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A cosmetic client plugin that adds a marquee effect based on session state. A comet light band streams along the window edge while thinking, with parallel bands for multiple sessions, reverse flow while awaiting your reply, and automatic per-model color themes.",
   "license": "MPL-2.0",
   "keywords": [

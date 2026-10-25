@@ -213,8 +213,22 @@ const GHOST_LEAD_MS = 180;
 			const MASK_ID = "dsh-marquee-chrome-mask";
 			const FEATHER_X_ID = "dsh-marquee-chrome-feather-x";
 			const FEATHER_Y_ID = "dsh-marquee-chrome-feather-y";
-			const CHROME_W = 138;
-			const CHROME_H = 40;
+			// Only the desktop shell paints native caption buttons over the webview;
+			// a plain browser tab has none, so cutting that strip there would blank a
+			// corner of the frame for no reason. Detect the shell instead of assuming.
+			const CHROME_STRIP = (() => {
+				try {
+					var ua = typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent : "";
+					if (ua.indexOf("Electron/") >= 0) return true;
+					var proc = typeof window !== "undefined" ? window.process : void 0;
+					var ver = proc && proc.versions ? proc.versions.electron : void 0;
+					return typeof ver === "string" && ver.length > 0;
+				} catch (error) {
+					return false;
+				}
+			})();
+			const CHROME_W = CHROME_STRIP ? 138 : 0;
+			const CHROME_H = CHROME_STRIP ? 40 : 0;
 			const CHROME_FEATHER = 18;
 			// Set to true to draw a live readout of what the overlay resolved in
 			// its bottom-left corner (handy when the window layout or the model
@@ -2481,6 +2495,9 @@ function returnPath(from, ring) {
 				const chromeW = Math.max(0, w - chromeX);
 				const chromeH = Math.min(CHROME_H, hgt);
 				const feather = Math.max(0, Math.min(CHROME_FEATHER, chromeX / 2, hgt - chromeH));
+				// No native strip (browser tab, or a shell without the overlay): keep
+				// the mask fully white and skip the feathered ramps entirely.
+				const chromeOn = CHROME_STRIP && chromeW > 0 && chromeH > 0;
 
 				const comets = [];
 				for (let i = 0; i < count; i++) {
@@ -2628,12 +2645,12 @@ function returnPath(from, ring) {
 								width: String(chromeW), height: String(chromeH),
 								fill: "#000",
 							}),
-							feather > 0 ? h("rect", {
+							chromeOn ? h("rect", {
 								x: String(chromeX - feather), y: "0",
 								width: String(feather), height: String(chromeH),
 								fill: "url(#" + FEATHER_X_ID + ")",
 							}) : null,
-							feather > 0 ? h("rect", {
+							chromeOn ? h("rect", {
 								x: String(chromeX - feather), y: String(chromeH),
 								width: String(chromeW + feather), height: String(feather),
 								fill: "url(#" + FEATHER_Y_ID + ")",
