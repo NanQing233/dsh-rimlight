@@ -20,6 +20,8 @@
 
 ![Comet-like light band flowing along the window edge while thinking](docs/effect-edge.png)
 
+*The lab has a dark / light switch in its top-right corner, dark by default.*
+
 <sub>Captured from the lab page, which renders a replica of the client window in the dark theme.</sub>
 
 ## How it works
