@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Rimlight">
+  <title>Rimlight</title>
+  <defs>
+    <linearGradient id="rimlight-logo-dark-arc" gradientUnits="userSpaceOnUse" x1="10" y1="44" x2="34" y2="10">
+      <stop offset="0" stop-color="#4d6bfe" stop-opacity="0"/>
+      <stop offset="0.35" stop-color="#4d6bfe" stop-opacity="0.55"/>
+      <stop offset="0.75" stop-color="#2f56e0" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#1b3fae"/>
+    </linearGradient>
+    <radialGradient id="rimlight-logo-dark-glow">
+      <stop offset="0" stop-color="#2f56e0" stop-opacity="0.34"/>
+      <stop offset="0.5" stop-color="#4d6bfe" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#4d6bfe" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="rimlight-logo-dark-blur" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="1.4"/>
+    </filter>
+  </defs>
+  <g fill="none" stroke-linecap="round">
+    <path d="M12 40 V26 Q12 12 26 12 H36" stroke="url(#rimlight-logo-dark-arc)" stroke-width="3.2" filter="url(#rimlight-logo-dark-blur)" opacity="0.45"/>
+    <path d="M12 40 V26 Q12 12 26 12 H36" stroke="url(#rimlight-logo-dark-arc)" stroke-width="4.6"/>
+  </g>
+  <circle cx="36" cy="12" r="9" fill="url(#rimlight-logo-dark-glow)"/>
+  <circle cx="36" cy="12" r="3.4" fill="#2f56e0"/>
+  <circle cx="36" cy="12" r="1.5" fill="#dce8ff"/>
+</svg>

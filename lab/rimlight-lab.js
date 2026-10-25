@@ -96,7 +96,7 @@
 		manualStop: false,
 		p: 0,
 		reply: false,          // waiting for the user -> the band turns back
-		dirNow: 1,             // eased direction, never a hard flip
+		dirNow: -1,            // eased direction, never a hard flip (-1 = clockwise, like the plugin)
 	};
 	var orbit = { mode: "off" };
 	var pendingGhost = 0;
@@ -126,6 +126,7 @@ var settles = {};
 	var waitDbg = {};
 	var wantStyleCheck = false;
 	var slotDbg = {};
+	var headDbg = {};
 	var shifts = {};
 	var cornerPh = 0;
 	var SPAWN_LEAD = 0.16;
@@ -323,13 +324,19 @@ var settles = {};
 	var multiEl = document.getElementById("multi");
 	var replyEl = document.getElementById("reply");
 	var themeEl = document.getElementById("theme");
+	// Same order and the same names the plugin's own settings panel shows, so the
+	// lab cannot disagree with the app about which palette is which.
+	var themeOrder = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "meta", "nvidia", "unknown"];
+	themeKeys = themeOrder.filter(function (k) { return !!M.THEMES[k]; })
+		.concat(themeKeys.filter(function (k) { return themeOrder.indexOf(k) < 0; }));
 	themeKeys.forEach(function (k) {
 		var o = document.createElement("option");
 		o.value = k;
-		o.textContent = k + (M.THEMES[k].label ? " · " + M.THEMES[k].label : "");
+		o.textContent = M.THEMES[k].label || k;
 		themeEl.appendChild(o);
 	});
 	themeEl.value = themeKey;
+	syncThemeEnabled();
 
 	function softRebuild() {
 		buildDefs();
@@ -351,8 +358,20 @@ var settles = {};
 		buildScene();
 	});
 	glowEl.addEventListener("change", function () { state.glow = glowEl.checked; softRebuild(); });
+	// With "one colour per band" on, the single-palette select has no say: say so
+	// instead of leaving a control that visibly does nothing.
+	function syncThemeEnabled() {
+		try {
+			themeEl.disabled = false;
+			themeEl.title = multi
+				? "每条光带各自配色开启时，单色选择不生效"
+				: "";
+		} catch (e) { /* noop */ }
+	}
+
 	multiEl.addEventListener("change", function () {
 		multi = multiEl.checked;
+		syncThemeEnabled();
 		buildDefs();
 		buildBands();
 	});
@@ -361,7 +380,17 @@ var settles = {};
 		// advance(), so the tail slides around instead of snapping.
 		state.reply = replyEl.checked;
 	});
-	themeEl.addEventListener("change", function () { themeKey = themeEl.value; softRebuild(); });
+	themeEl.addEventListener("change", function () {
+		// Picking one palette is an explicit request for that colour, so it turns
+		// off "one colour per band" instead of silently doing nothing.
+		if (multi) {
+			multi = false;
+			multiEl.checked = false;
+		}
+		themeKey = themeEl.value;
+		syncThemeEnabled();
+		softRebuild();
+	});
 
 	document.getElementById("btn-think").addEventListener("click", function () {
 		state.mode = "thinking";
@@ -428,7 +457,7 @@ var settles = {};
 
 	function resetAll() {
 		// Defaults mirror the markup, so there is one place to keep them honest.
-		var d = { count: 1, trail: 320, thickness: 6, speed: 1.6, sweep: 0.62, glow: true, multi: true, reply: false, theme: "deepseek" };
+		var d = { count: 1, trail: 320, thickness: 6, speed: 1.6, sweep: 0.62, glow: true, multi: false, reply: false, theme: "deepseek" };
 		state.count = d.count;
 		state.trail = d.trail;
 		state.thickness = d.thickness;
@@ -437,7 +466,7 @@ var settles = {};
 		// go back through sweepInv or band 0 lands somewhere else entirely.
 		state.p = cornerPh === null ? 0 : (M.sweepInv ? wrap1(M.sweepInv(cornerPh)) : cornerPh);
 		state.reply = d.reply;
-		state.dirNow = 1;
+		state.dirNow = -1;
 		state.mode = "idle";
 		state.manualStop = false;
 		state.answerGrowAt = 0;
@@ -451,6 +480,7 @@ var settles = {};
 		themeEl.value = d.theme;
 		glowEl.checked = d.glow;
 		multiEl.checked = d.multi;
+		syncThemeEnabled();
 		replyEl.checked = d.reply;
 		var speedElR = document.getElementById("speed");
 		if (speedElR) {
@@ -687,8 +717,12 @@ var settles = {};
 
 	// One simulation step. `dt` comes from the real rAF delta, or from the
 	// warm-up loop that fast-forwards the scene for a scripted capture.
+	var frozen = false;
 	function advance(dt) {
 		if (!track) return;
+		// `?p=` pins the phase: the scene stops advancing so two captures with
+		// different palettes can be compared pixel for pixel.
+		if (frozen) dt = 0;
 		clock += dt;
 		var now = clock;
 		// The amplitude is eased over time exactly like the plugin does it, so a
@@ -717,7 +751,7 @@ var settles = {};
 
 		// Reverse (waiting for the user) is eased in, so the tail swaps sides
 		// smoothly instead of flipping in one frame.
-		var dirTarget = state.reply ? -1 : 1;
+		var dirTarget = state.reply ? 1 : -1;
 		state.dirNow += (dirTarget - state.dirNow) * Math.min(1, dt / 240);
 		if (Math.abs(dirTarget - state.dirNow) < 0.01) state.dirNow = dirTarget;
 		var dirNow = state.dirNow;
@@ -780,8 +814,15 @@ var settles = {};
 				}
 				var d = "";
 				try { d = M.ribbonPath(track, headS, lenNow, hL, 34, null, dirNow); } catch (e) { d = ""; }
+				if (!headDbg[i]) headDbg[i] = {};
+				headDbg[i].x = head.x; headDbg[i].y = head.y; headDbg[i].a = head.angle;
 				var headPt = { x: head.x, y: head.y };
-				var tailS = M.wrapArc ? M.wrapArc(track, headS - lenNow) : headS - lenNow;
+				// The tail sits *behind* the head, and behind depends on the direction:
+				// with the clockwise default (-1) the band travels towards smaller s, so
+				// the tail is at headS + lenNow. Dropping the direction factor put the
+				// gradient's start on the wrong side of the head, which padded the whole
+				// ribbon with the last stop - every palette rendered flat white.
+				var tailS = M.wrapArc ? M.wrapArc(track, headS - dirNow * lenNow) : headS - dirNow * lenNow;
 				var tailPt = track.at(tailS);
 				lastLen[i] = lenNow;
 				nd.path.setAttribute("d", d);
@@ -870,7 +911,7 @@ var settles = {};
 			"px/ms  ring-avg=" + (track.total / lapMs).toFixed(2) +
 			"  cap=" + (M.transitCap ? M.transitCap(phases[0] || 0, track.total, lapMs).toFixed(2) : "?") + "px/ms" +
 			"\ntheme=" + themeKey + (multi ? " (per band: " + bandOrder.slice(0, clamp(n, 1, 4)).join(",") + ")" : "") +
-			"  glow=" + state.glow + "  dir=" + (state.dirNow < -0.02 ? "ccw" : "cw") +
+			"  glow=" + state.glow + "  dir=" + (state.dirNow < -0.02 ? "cw" : "ccw") +
 			"\norbit=" + orbit.mode +
 			"  ring=" + (state.mode === "streaming" ? "yes" : "-") +
 			"  corner=" + (cornerPh === null ? "null" : cornerPh.toFixed(3)) +
@@ -880,6 +921,10 @@ var settles = {};
 			"  orgLen=" + (orbit.ring && M.fitRing
 				? Math.min(state.trail, M.ellipsePerimeter(M.fitRing(orbit.ring, state.trail).rx, M.fitRing(orbit.ring, state.trail).ry) * 0.8).toFixed(0)
 				: "-") +
+			"\nhead=" + (function () {
+				var hb = headDbg[0];
+				return hb ? hb.x.toFixed(1) + "," + hb.y.toFixed(1) + " a=" + hb.a.toFixed(1) : "-";
+			})() +
 			"\nphases=" + (function () {
 				var k0 = clamp(n, 1, 4);
 				var list = [];
@@ -1005,6 +1050,7 @@ var settles = {};
 			// scene clears ghostSvg and would detach the ghost's nodes.
 			pendingGhost = clamp(+q.ghost || 0, 0, 4000);
 		}
+		if (q.p) { state.p = clamp(+q.p, 0, 1); frozen = true; }
 		buildScene();
 		if (pendingGhost) {
 			spawnGhost(true);
