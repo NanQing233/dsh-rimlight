@@ -48,6 +48,7 @@
 	var ghostHost = el("g", {});
 	ghostSvg.appendChild(ghostHost);
 
+	var cornerOverride = null;
 	var W = 0;
 	var H = 0;
 	var track = null;
@@ -214,7 +215,12 @@ var settles = {};
 		var sendRect = send.getBoundingClientRect();
 		var startX = clamp(sendRect.left + sendRect.width / 2 - r.left, 40, W - 40);
 		lastSend = { x: startX, y: H - h };
-		track = M.buildTrack(W, H, h, startX);
+		// The mock window is drawn with a 22px corner, so the band has to turn
+		// with that same corner instead of cutting across it.
+		var rad = 0;
+		try { rad = parseFloat(getComputedStyle(frame).borderTopLeftRadius) || 0; } catch (e) { rad = 0; }
+		if (cornerOverride !== null) rad = cornerOverride;
+		track = M.buildTrack(W, H, h, startX, rad);
 		var perimeter = 2 * (W + H) - 8 * h;
 		// Same default the plugin ships: speed 1.6 (a lap is about 2.6s on a
 		// 1065x1160 frame), which is also what nobody has to configure.
@@ -1000,6 +1006,8 @@ var settles = {};
 		if (q.t) { state.thickness = +q.t; thickEl.value = state.thickness; document.getElementById("v-thick").textContent = state.thickness; }
 		if (q.theme && M.THEMES[q.theme]) { themeKey = q.theme; themeEl.value = themeKey; }
 		if (q.multi) { multi = true; multiEl.checked = true; }
+		// ?corner=0 reproduces the old square-cornered track, for A/B captures.
+		if (q.corner !== undefined) { cornerOverride = parseFloat(q.corner) || 0; }
 		if (q.reply) { state.reply = true; replyEl.checked = true; }
 		if (q.sweep) {
 			// 0 is a real value here (uniform speed), so no "|| default" shortcut:

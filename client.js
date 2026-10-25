@@ -852,9 +852,13 @@ const GHOST_LEAD_MS = 180;
 			 * `startX` picks the point on the bottom edge where the lap starts,
 			 * so the first frame of the reveal emerges from the composer side.
 			 */
-			function buildTrack(w, hgt, half, startX) {
+			function buildTrack(w, hgt, half, startX, corner) {
 				const t = Math.max(1, half);
-				const r = t;
+				// A rounded host window: the centreline has to turn with the same
+				// corner it sits `t` inside of, so the radius shrinks by `t` and the
+				// arc centre stays on the host's own corner centre.
+				const host = Number.isFinite(corner) && corner > 0 ? corner : 0;
+				const r = Math.max(t, host - t);
 				// The centreline runs `t` inside the frame, so a band of half-width
 				// `t` exactly touches the window edge.
 				const left = t;
