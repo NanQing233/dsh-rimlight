@@ -1,0 +1,35 @@
+{
+  "name": "dsh-rimlight",
+  "version": "1.0.0",
+  "description": "A cosmetic client plugin that adds a marquee effect based on session state. A comet light band streams along the window edge while thinking, with parallel bands for multiple sessions, reverse flow while awaiting your reply, and automatic per-model color themes.",
+  "license": "MPL-2.0",
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "ui", "effect", "animation"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/dsh-rimlight.git"
+  },
+  "homepage": "https://github.com/OWNER/dsh-rimlight#readme",
+  "bugs": {
+    "url": "https://github.com/OWNER/dsh-rimlight/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.5"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-session", "@deepseek-ai/dsh-client-ui-slots", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-client-ui-primitives"]
+    }
+  }
+}

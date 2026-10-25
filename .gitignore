@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Packed tarballs
+*.tgz
+
+# Logs and local captures
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.yarn-error.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+.vscode/
+
+# Local scratch used while tuning the effect (screenshots, dumps, probes)
+tmp-*.png
+shot-app.png
+dom-dump-*.json
+frames/
+.edge-profile*/
