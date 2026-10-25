@@ -324,10 +324,15 @@ var settles = {};
 	var multiEl = document.getElementById("multi");
 	var replyEl = document.getElementById("reply");
 	var themeEl = document.getElementById("theme");
+	// Same order and the same names the plugin's own settings panel shows, so the
+	// lab cannot disagree with the app about which palette is which.
+	var themeOrder = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "meta", "nvidia", "unknown"];
+	themeKeys = themeOrder.filter(function (k) { return !!M.THEMES[k]; })
+		.concat(themeKeys.filter(function (k) { return themeOrder.indexOf(k) < 0; }));
 	themeKeys.forEach(function (k) {
 		var o = document.createElement("option");
 		o.value = k;
-		o.textContent = k + (M.THEMES[k].label ? " · " + M.THEMES[k].label : "");
+		o.textContent = M.THEMES[k].label || k;
 		themeEl.appendChild(o);
 	});
 	themeEl.value = themeKey;
@@ -702,8 +707,12 @@ var settles = {};
 
 	// One simulation step. `dt` comes from the real rAF delta, or from the
 	// warm-up loop that fast-forwards the scene for a scripted capture.
+	var frozen = false;
 	function advance(dt) {
 		if (!track) return;
+		// `?p=` pins the phase: the scene stops advancing so two captures with
+		// different palettes can be compared pixel for pixel.
+		if (frozen) dt = 0;
 		clock += dt;
 		var now = clock;
 		// The amplitude is eased over time exactly like the plugin does it, so a
@@ -1026,6 +1035,7 @@ var settles = {};
 			// scene clears ghostSvg and would detach the ghost's nodes.
 			pendingGhost = clamp(+q.ghost || 0, 0, 4000);
 		}
+		if (q.p) { state.p = clamp(+q.p, 0, 1); frozen = true; }
 		buildScene();
 		if (pendingGhost) {
 			spawnGhost(true);
