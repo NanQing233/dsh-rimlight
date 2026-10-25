@@ -126,6 +126,7 @@ var settles = {};
 	var waitDbg = {};
 	var wantStyleCheck = false;
 	var slotDbg = {};
+	var headDbg = {};
 	var shifts = {};
 	var cornerPh = 0;
 	var SPAWN_LEAD = 0.16;
@@ -780,6 +781,8 @@ var settles = {};
 				}
 				var d = "";
 				try { d = M.ribbonPath(track, headS, lenNow, hL, 34, null, dirNow); } catch (e) { d = ""; }
+				if (!headDbg[i]) headDbg[i] = {};
+				headDbg[i].x = head.x; headDbg[i].y = head.y; headDbg[i].a = head.angle;
 				var headPt = { x: head.x, y: head.y };
 				var tailS = M.wrapArc ? M.wrapArc(track, headS - lenNow) : headS - lenNow;
 				var tailPt = track.at(tailS);
@@ -880,6 +883,10 @@ var settles = {};
 			"  orgLen=" + (orbit.ring && M.fitRing
 				? Math.min(state.trail, M.ellipsePerimeter(M.fitRing(orbit.ring, state.trail).rx, M.fitRing(orbit.ring, state.trail).ry) * 0.8).toFixed(0)
 				: "-") +
+			"\nhead=" + (function () {
+				var hb = headDbg[0];
+				return hb ? hb.x.toFixed(1) + "," + hb.y.toFixed(1) + " a=" + hb.a.toFixed(1) : "-";
+			})() +
 			"\nphases=" + (function () {
 				var k0 = clamp(n, 1, 4);
 				var list = [];
