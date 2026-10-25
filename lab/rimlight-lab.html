@@ -598,19 +598,10 @@
 	#footer .copy { color: var(--footer-copy); }
 
 	/* Liquid glass needs an SVG filter as a backdrop, which only Chromium-family
-	   engines can do. Every surface already has a plain frost above; the line below
-	   upgrades them to the real refraction when <html class="refract"> is present
-	   (set by the inline probe at the top of <body>
-<script>
-(function () {
-	try {
-		var gecko = CSS.supports("-moz-appearance", "none");
-		var chromium = !gecko && (!!window.chrome || !!navigator.userAgentData) && CSS.supports("backdrop-filter", "blur(1px)");
-		if (chromium) document.documentElement.classList.add("refract");
-	} catch (e) {}
-})();
-</script>). Firefox / Safari keep the
-	   Gaussian blur instead of silently losing the glass. */
+	   engines can do. Every surface already has a plain frost above; the rules
+	   below upgrade them to real refraction when <html class="refract"> is set by
+	   the inline probe just inside <body>. Firefox / Safari keep the Gaussian
+	   blur instead of silently losing the glass. */
 	html.refract .lg { backdrop-filter: url(#lg-refract) blur(var(--fr-blur)) saturate(var(--fr-sat)); }
 	html.refract #panel { backdrop-filter: url(#lg-refract) blur(30px) saturate(185%); }
 	html.refract #panel .grp { backdrop-filter: url(#lg-refract) blur(10px) saturate(160%); }
@@ -629,6 +620,18 @@
 </style>
 </head>
 <body>
+<script>
+// Liquid glass needs an SVG filter as a backdrop, which only Chromium-family
+// engines can do. Everything keeps its plain frost; this class upgrades the
+// surfaces to the real refraction where it works.
+(function () {
+	try {
+		var gecko = CSS.supports("-moz-appearance", "none");
+		var chromium = !gecko && (!!window.chrome || !!navigator.userAgentData) && CSS.supports("backdrop-filter", "blur(1px)");
+		if (chromium) document.documentElement.classList.add("refract");
+	} catch (e) {}
+})();
+</script>
 <button id="theme-toggle" type="button" aria-label="切换明暗模式" title="切换到明亮模式" aria-pressed="true">
 	<i>
 		<svg class="moon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.2 1.6a6.6 6.6 0 1 0 8.2 8.2A6.9 6.9 0 0 1 6.2 1.6z"/></svg>
@@ -762,8 +765,8 @@
 		};
 	})();
 </script>
-<script src="../client.js?v=20261025e"></script>
-<script src="./rimlight-lab.js?v=20261025e"></script>
+<script src="../client.js?v=20261025f"></script>
+<script src="./rimlight-lab.js?v=20261025f"></script>
 <script>
 	(function () {
 		var sw = document.getElementById("sweep");
