@@ -429,7 +429,7 @@ var settles = {};
 
 	function resetAll() {
 		// Defaults mirror the markup, so there is one place to keep them honest.
-		var d = { count: 1, trail: 320, thickness: 6, speed: 1.6, sweep: 0.62, glow: true, multi: true, reply: false, theme: "deepseek" };
+		var d = { count: 1, trail: 320, thickness: 6, speed: 1.6, sweep: 0.62, glow: true, multi: false, reply: false, theme: "deepseek" };
 		state.count = d.count;
 		state.trail = d.trail;
 		state.thickness = d.thickness;

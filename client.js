@@ -1947,6 +1947,8 @@ function returnPath(from, ring) {
 				const landedRef = useRef({});
 				const redressRef = useRef({});
 				const phRef = useRef({});
+			// Geometry signature of the last loop start: a palette swap keeps the bands.
+			const geomRef = useRef("");
 			const settleRef = useRef({});
 				const offRef = useRef({});
 				if (!nodeCache.current) {
@@ -2022,7 +2024,13 @@ function returnPath(from, ring) {
 					if (g0) { g0.style.transition = ""; g0.style.opacity = ""; }
 				}
 				const resumeGap = resumeAtRef.current ? nowMs() - resumeAtRef.current : -1;
-				if (!(resumeGap >= 0 && resumeGap < RESUME_MS)) {
+				// A palette change restarts this effect (the theme is a dependency), but it
+				// must not relaunch the bands: only a real change of geometry or of the
+				// band count is allowed to reset their birth and phase.
+				const geomSig = [w, hgt, thickness, trail, startX, count].join("|");
+				const geomChanged = geomSig !== geomRef.current;
+				geomRef.current = geomSig;
+				if (geomChanged && !(resumeGap >= 0 && resumeGap < RESUME_MS)) {
 					birthRef.current = [];
 					grabRef.current = {};
 					catchRef.current = {};
@@ -3058,13 +3066,27 @@ function returnPath(from, ring) {
 						}
 					}
 				}
+				// The composer chip is the freshest source: it changes the instant a
+				// different model is picked, while the session projection only catches up
+				// on the next turn. It describes the conversation on screen though, so it
+				// may only speak for that one.
+				let screenRow = null;
+				for (let i = 0; i < liveRows.length; i++) {
+					if (liveRows[i].current) { screenRow = liveRows[i]; break; }
+				}
+				const domFresh = !!modelInfo.modelId && (!currentRow || !screenRow || currentRow.id === screenRow.id);
 				const mergedModel = {
-					modelId: (currentRow && currentRow.modelId) || modelInfo.modelId || "",
+					modelId: (domFresh && modelInfo.modelId) || (currentRow && currentRow.modelId) || modelInfo.modelId || "",
 					modelName: "",
-					domText: modelInfo.domText || "",
+					domText: (domFresh && modelInfo.domText) || "",
 					providerId: (currentRow && currentRow.providerId) || modelInfo.providerId || "",
 				};
-				const theme = modelColor ? themeForModel(mergedModel, unknownKey) : manualTheme;
+				// "No model identified yet" is not the same as "a model we do not know":
+				// before anything is known the house palette is used, so the first frame
+				// is DeepSeek blue instead of the unknown-model palette.
+				const modelKnown = !!(mergedModel.modelId || mergedModel.modelName || mergedModel.domText || mergedModel.providerId);
+				const unknownFallback = modelKnown ? unknownKey : "deepseek";
+				const theme = modelColor ? themeForModel(mergedModel, unknownFallback) : manualTheme;
 
 				// One band per thinking conversation, in a stable order, so band i
 				// and its ghost always name the same session.
@@ -3097,6 +3119,7 @@ function returnPath(from, ring) {
 				const count = Math.max(1, Math.min(MAX_COMETS, liveCount || 1));
 				// Every band gets the palette of its own conversation: two tasks on
 				// different models must not share one colour.
+				const currentSessionId = currentRow ? currentRow.id : null;
 				const bandThemes = [];
 				for (let i = 0; i < count; i++) {
 					const id = runningIds[i];
@@ -3104,10 +3127,20 @@ function returnPath(from, ring) {
 					for (let k = 0; k < liveRows.length; k++) {
 						const row = liveRows[k];
 						if (!row || row.id !== id) continue;
-						const own = modelColor
-							? themeForModel({ modelId: row.modelId || "", modelName: "", domText: "", providerId: row.providerId || "" }, unknownKey)
+						// The conversation on screen follows the composer chip, so picking a
+						// different model repaints at once; the others use their projection.
+						const mine = id === currentSessionId && domFresh;
+						const live = (mine && modelInfo.modelId) || row.modelId || "";
+						const side = (mine && modelInfo.providerId) || row.providerId || "";
+						const known = !!(live || side);
+						bt = modelColor
+							? themeForModel({
+								modelId: live,
+								modelName: "",
+								domText: mine ? modelInfo.domText || "" : "",
+								providerId: side,
+							}, known ? unknownKey : unknownFallback)
 							: manualTheme;
-						bt = own;
 						break;
 					}
 					bandThemes.push(bt);
@@ -3259,13 +3292,14 @@ function returnPath(from, ring) {
 						for (let k = 0; k < liveRows.length; k++) {
 							if (liveRows[k].id === id) { row = liveRows[k]; break; }
 						}
+						const known = !!(row && (row.modelId || row.providerId));
 						const palette = modelColor
 							? themeForModel({
 								modelId: row ? row.modelId : "",
 								modelName: "",
 								domText: "",
 								providerId: row ? row.providerId : "",
-							}, unknownKey)
+							}, known ? unknownKey : unknownFallback)
 							: manualTheme;
 						next.set(id, { index: i, theme: palette });
 					}
@@ -3355,7 +3389,9 @@ function returnPath(from, ring) {
 						} catch (e) { /* noop */ }
 					};
 					tick();
-					const id = setInterval(tick, 1500);
+					// Short window on purpose: switching the model in the composer has to
+					// recolour the bands while they are on screen, not one turn later.
+					const id = setInterval(tick, 400);
 					return () => clearInterval(id);
 				}, [visible]);
 
