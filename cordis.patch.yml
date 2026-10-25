@@ -1,0 +1,4 @@
+- insert:
+    - id: rimlight
+      name: 'dsh-rimlight'
+      config: {}

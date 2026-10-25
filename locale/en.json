@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Rimlight",
+    "description": "A cosmetic client plugin that adds a marquee effect based on session state. A comet light band streams along the window edge while thinking, with parallel bands for multiple sessions, reverse flow while awaiting your reply, and automatic per-model color themes."
+  }
+}
