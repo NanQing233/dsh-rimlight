@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Rimlight Lab · 交互式调试台</title>
+<style>
+	:root {
+		color-scheme: dark;
+		--lg-blur: 26px;
+		--lg-sat: 165%;
+		--glass: linear-gradient(158deg, rgba(255,255,255,0.11), rgba(255,255,255,0.035) 42%, rgba(255,255,255,0.055));
+		--glass-strong: linear-gradient(158deg, rgba(255,255,255,0.17), rgba(255,255,255,0.05) 46%, rgba(255,255,255,0.08));
+		--edge: rgba(255,255,255,0.16);
+		--edge-soft: rgba(255,255,255,0.08);
+		--text: #e7eefc;
+		--muted: #9fb0c9;
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		min-height: 100vh;
+		color: var(--text);
+		font: 13px/1.5 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+		background:
+			radial-gradient(1100px 620px at 12% -10%, rgba(96,140,255,0.42), transparent 62%),
+			radial-gradient(900px 560px at 92% 8%, rgba(168,107,255,0.34), transparent 60%),
+			radial-gradient(820px 620px at 72% 108%, rgba(53,208,255,0.24), transparent 62%),
+			linear-gradient(180deg, #070a11 0%, #0a0f1a 52%, #070a10 100%);
+		display: flex;
+		height: 100vh;
+		overflow: hidden;
+	}
+	body::before {
+		content: "";
+		position: fixed; inset: -20%;
+		background:
+			radial-gradient(38% 30% at 28% 34%, rgba(130,170,255,0.20), transparent 70%),
+			radial-gradient(30% 26% at 74% 62%, rgba(190,130,255,0.16), transparent 72%);
+		filter: blur(30px);
+		pointer-events: none;
+	}
+	#stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 22px; min-width: 0; z-index: 1; }
+	#frame {
+		position: relative; width: 100%; height: 100%; max-width: 1180px;
+		border-radius: 20px;
+		background:
+			linear-gradient(180deg, rgba(24,29,40,0.72), rgba(12,16,24,0.82)),
+			radial-gradient(120% 90% at 20% 0%, rgba(120,160,255,0.14), transparent 60%);
+		backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+		-webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-sat));
+		border: 1px solid var(--edge);
+		box-shadow:
+			0 30px 80px rgba(0,0,0,0.58),
+			0 2px 0 rgba(255,255,255,0.10) inset,
+			0 -1px 0 rgba(0,0,0,0.5) inset,
+			0 0 60px rgba(96,140,255,0.10);
+		overflow: hidden;
+	}
+	#frame::after {
+		content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+		background:
+			linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 22%, rgba(255,255,255,0) 74%, rgba(120,200,255,0.14) 100%);
+		mix-blend-mode: screen; opacity: 0.75;
+	}
+	#frame .titlebar {
+		position: absolute; inset: 0 0 auto 0; height: 42px; display: flex; align-items: center; gap: 8px;
+		padding: 0 14px; font-size: 12px; color: #b9c8e2; letter-spacing: 0.02em;
+		background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02));
+		border-bottom: 1px solid var(--edge-soft);
+	}
+	#frame .titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,0.25)); box-shadow: 0 0 12px rgba(255,255,255,0.35); }
+	#frame .wincontrols { position: absolute; right: 8px; top: 6px; height: 30px; display: flex; gap: 4px; }
+	#frame .wincontrols i { width: 38px; height: 30px; display: flex; align-items: center; justify-content: center; font-style: normal; color: #c6d4ea; border-radius: 9px; background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.10); }
+	#frame .sidebar { position: absolute; left: 0; top: 42px; bottom: 0; width: 208px; padding: 12px 10px; border-right: 1px solid var(--edge-soft); background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)); }
+	#frame .sidebar .row { height: 32px; border-radius: 10px; margin-bottom: 7px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.055); }
+	#frame .sidebar .row.sel { background: linear-gradient(160deg, rgba(122,158,255,0.30), rgba(122,158,255,0.10)); border-color: rgba(140,175,255,0.42); box-shadow: 0 0 18px rgba(96,140,255,0.22), 0 1px 0 rgba(255,255,255,0.16) inset; }
+	#frame .convo { position: absolute; left: 208px; right: 0; top: 42px; bottom: 0; padding: 18px 28px 100px; overflow: hidden; }
+	#frame .bubble { border-radius: 14px; padding: 10px 13px; margin-bottom: 10px; color: #cfdcf0; background: linear-gradient(158deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03)); border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset; }
+	#frame .bubble.user { width: 54%; margin-left: auto; background: linear-gradient(158deg, rgba(120,158,255,0.30), rgba(120,158,255,0.10)); border-color: rgba(140,175,255,0.34); }
+	#frame #answer { border-radius: 16px; padding: 13px 15px; min-height: 56px; color: #e6eefb; background: linear-gradient(158deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.11); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 12px 30px rgba(0,0,0,0.20); }
+	#frame #answer:empty { display: none; }
+	#frame #answer .ln { height: 9px; border-radius: 5px; margin-bottom: 8px; background: linear-gradient(90deg, rgba(226,238,255,0.62), rgba(226,238,255,0.30)); }
+	#frame .composer {
+		position: absolute; left: 232px; right: 26px; bottom: 18px; height: 58px; display: flex; align-items: center; gap: 10px;
+		padding: 0 10px 0 18px; color: var(--muted); border-radius: 18px;
+		background: linear-gradient(158deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04));
+		backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%);
+		border: 1px solid rgba(255,255,255,0.16);
+		box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 18px 40px rgba(0,0,0,0.38), 0 0 0 1px rgba(120,160,255,0.08);
+	}
+	#frame #send {
+		margin-left: auto; width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; color: #fff; font-size: 15px;
+		display: flex; align-items: center; justify-content: center;
+		background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.85), rgba(255,255,255,0.18) 34%, rgba(110,150,255,0.75) 70%), linear-gradient(180deg, #7f9bff, #4d6bfe);
+		box-shadow: 0 8px 20px rgba(77,107,254,0.45), 0 1px 0 rgba(255,255,255,0.6) inset;
+	}
+	#frame #ask { flex: 1 1 auto; min-width: 0; background: transparent; border: 0; outline: 0; color: #dbe6f6; font: 15px/1.45 inherit; }
+	#frame #ask::placeholder { color: var(--muted); }
+	#frame #send { cursor: pointer; user-select: none; }
+	#frame .bubble .glass-word { display: inline; padding: 0; margin: 0 1px; border: 0; border-radius: 0; background: none; font-weight: 600; letter-spacing: 0.02em; vertical-align: baseline; }
+	#frame .bubble .glass-word.warm { color: #ff8b8b; text-shadow: 0 0 1px rgba(255,120,120,0.9), 0 0 10px rgba(255,72,86,0.85), 0 0 22px rgba(255,40,58,0.55); }
+	#frame .bubble .glass-word.cool { color: #7ef0a8; text-shadow: 0 0 1px rgba(120,255,180,0.9), 0 0 10px rgba(52,214,132,0.8), 0 0 22px rgba(20,180,110,0.5); }
+	#overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+	#panel {
+		width: 322px; flex: 0 0 322px; padding: 16px; overflow-y: auto; z-index: 1;
+		background: linear-gradient(170deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03) 44%, rgba(255,255,255,0.06));
+		backdrop-filter: blur(30px) saturate(175%); -webkit-backdrop-filter: blur(30px) saturate(175%);
+		border-left: 1px solid rgba(255,255,255,0.14);
+		box-shadow: -18px 0 50px rgba(0,0,0,0.35), 1px 0 0 rgba(255,255,255,0.08) inset;
+	}
+	#panel h1 { font-size: 12px; margin: 0 0 14px; letter-spacing: 0.16em; color: #dce8ff; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+	#panel h1::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, #7aa8ff); box-shadow: 0 0 14px rgba(122,168,255,0.9); }
+	#panel .grp { margin-bottom: 16px; padding: 11px 12px; border-radius: 14px; background: linear-gradient(158deg, rgba(255,255,255,0.075), rgba(255,255,255,0.022)); border: 1px solid rgba(255,255,255,0.09); box-shadow: 0 1px 0 rgba(255,255,255,0.10) inset; }
+	#panel .grp > label { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: #a9bcd8; margin-bottom: 8px; letter-spacing: 0.05em; }
+	#panel button {
+		appearance: none; position: relative; overflow: hidden; cursor: pointer;
+		color: #e9f1ff; font-size: 12px; padding: 8px 11px; margin: 0 6px 7px 0; border-radius: 11px;
+		border: 1px solid rgba(255,255,255,0.14);
+		background: linear-gradient(158deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045));
+		box-shadow: 0 1px 0 rgba(255,255,255,0.22) inset, 0 6px 16px rgba(0,0,0,0.22);
+		transition: transform 120ms ease, box-shadow 160ms ease, background 160ms ease;
+	}
+	#panel button::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,0.35), transparent 42%); opacity: 0; transition: opacity 160ms ease; }
+	#panel button:hover { background: linear-gradient(158deg, rgba(255,255,255,0.20), rgba(255,255,255,0.07)); transform: translateY(-1px); }
+	#panel button:hover::after { opacity: 0.55; }
+	#panel button:active { transform: translateY(0); box-shadow: 0 1px 0 rgba(255,255,255,0.14) inset, 0 2px 8px rgba(0,0,0,0.28); }
+	#panel button.primary { border-color: rgba(150,185,255,0.5); background: linear-gradient(158deg, rgba(130,165,255,0.42), rgba(96,140,255,0.18)); box-shadow: 0 1px 0 rgba(255,255,255,0.30) inset, 0 10px 26px rgba(77,107,254,0.30); }
+	#panel input[type=range] { width: 100%; height: 22px; appearance: none; background: transparent; }
+	#panel input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(90deg, rgba(150,185,255,0.55), rgba(255,255,255,0.10)); box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset; }
+	#panel input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff, #b9cdff 55%, #7aa0ff); box-shadow: 0 2px 10px rgba(70,110,255,0.55), 0 0 0 1px rgba(255,255,255,0.5) inset; }
+	#panel select { width: 100%; padding: 8px 10px; border-radius: 11px; color: var(--text); border: 1px solid rgba(255,255,255,0.14); background: linear-gradient(158deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)); }
+	#panel .val { color: #cfe0ff; font-variant-numeric: tabular-nums; }
+	#panel .hint { font-size: 11px; color: #8095b3; margin-top: 7px; line-height: 1.45; }
+	#panel .chk { display: flex; align-items: center; gap: 8px; margin: 7px 0; font-size: 12px; color: #cfdcf0; }
+	#panel .chk input { appearance: none; width: 34px; height: 19px; border-radius: 999px; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.16); position: relative; transition: background 160ms ease; }
+	#panel .chk input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff, #c9d9f5); transition: transform 160ms ease; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+	#panel .chk input:checked { background: linear-gradient(120deg, rgba(140,175,255,0.85), rgba(96,140,255,0.55)); border-color: rgba(170,200,255,0.55); }
+	#panel .chk input:checked::after { transform: translateX(15px); }
+	#readout { font: 11px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; color: #9fc0e8; white-space: pre-wrap; margin: 0; padding: 9px 10px; border-radius: 11px; background: rgba(6,10,18,0.55); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 10px 24px rgba(0,0,0,0.28) inset; }
+</style>
+</head>
+<body>
+<div id="stage">
+	<div id="frame">
+		<div class="titlebar"><span class="dot"></span>DeepSeek Harness · Rimlight 调试窗口</div>
+		<div class="wincontrols"><i>–</i><i>□</i><i>✕</i></div>
+		<div class="sidebar">
+			<div class="row" data-demo-row="bg1"></div>
+			<div class="row sel"></div>
+			<div class="row"></div>
+			<div class="row"></div>
+			<div class="row"></div>
+		</div>
+		<div class="convo">
+			<!-- The easter-egg exchange ships in the markup so a cached script can
+			     never leave the area blank; rimlight-lab.js only repaints the badge
+			     from the local time (peak -> red 梁文峰, off-peak -> green 梁文谷). -->
+			<div class="bubble user">现在是什么时段?</div>
+			<div class="bubble" id="egg-answer">现在是<span class="glass-word cool" id="egg-word">梁文谷</span>时段。</div>
+		</div>
+		<div class="composer"><input id="ask" type="text" autocomplete="off" spellcheck="false" placeholder="继续输入…"><div id="send">↑</div></div>
+		<div id="overlay"></div>
+	</div>
+</div>
+<div id="panel">
+	<h1>RIMLIGHT LAB</h1>
+	<div class="grp">
+		<label>动画</label>
+		<button id="btn-think" class="primary">开始思考</button>
+		<button id="btn-entry">角落重生</button>
+		<button id="btn-more">再加一条</button>
+		<button id="btn-finish">输出完成</button>
+		<button id="btn-stop">手动中断</button>
+		<button id="btn-bg">后台结束</button>
+		<button id="btn-reset">重置</button>
+		<div class="hint">这一版对应发布分支：光带只在左下角出生、尾巴从 0 长出；输出阶段沿边框绕圈，不再离开边框去绕答案。</div>
+	</div>
+	<div class="grp">
+		<label>正在运行的对话数 <span class="val" id="v-count">1</span></label>
+		<input type="range" id="count" min="1" max="4" step="1" value="1">
+		<div class="hint">最多 4 条，等距镜像；新带等自己的槽位走到角落附近才出现，所以多带首尾不会互相追。</div>
+	</div>
+	<div class="grp">
+		<label>速度倍率 <span class="val" id="v-speed">1.60</span></label>
+		<input type="range" id="speed" min="0.3" max="3" step="0.05" value="1.6">
+		<div class="hint">改变一圈时长（与插件设置里的「速度倍率」同义）。</div>
+	</div>
+	<div class="grp">
+		<label>扫掠幅度 <span class="val" id="v-sweep">0.62</span></label>
+		<input type="range" id="sweep" min="0" max="0.95" step="0.01" value="0.62">
+		<div class="hint">一圈之内的速度呼吸：0 匀速，0.62 默认（拐角慢、直边快），0.95 接近在拐角刹停。改动会在 200ms 内缓动生效。</div>
+	</div>
+	<div class="grp">
+		<label>拖尾长度 <span class="val" id="v-trail">320</span></label>
+		<input type="range" id="trail" min="40" max="1200" step="10" value="320">
+	</div>
+	<div class="grp">
+		<label>粗细 <span class="val" id="v-thick">6</span></label>
+		<input type="range" id="thick" min="2" max="24" step="1" value="6">
+	</div>
+	<div class="grp">
+		<label>模型配色</label>
+		<select id="theme"></select>
+		<div class="chk"><input type="checkbox" id="glow" checked><span>边缘泛光</span></div>
+		<div class="chk"><input type="checkbox" id="multi" checked><span>每条光带各自配色</span></div>
+		<div class="chk"><input type="checkbox" id="reply"><span>等待回复（反向旋转）</span></div>
+	</div>
+	<div class="grp">
+		<label>读数</label>
+		<div id="readout">-</div>
+	</div>
+</div>
+<script>
+	// A minimal React stand-in so the real client.js can be evaluated in this
+	// page without the app: the factory runs, the geometry comes out through
+	// `exports.__debug`, and no component is ever rendered here.
+	(function () {
+		const noop = function () {};
+		const React = {
+			createElement: function () { return null; },
+			Fragment: "Fragment",
+			memo: function (f) { return f; },
+			useState: function (v) { return [typeof v === "function" ? v() : v, noop]; },
+			useEffect: noop,
+			useLayoutEffect: noop,
+			useRef: function (v) { return { current: v }; },
+			useMemo: function (f) { return f(); },
+			useCallback: function (f) { return f; },
+			useSyncExternalStore: function (sub, get) { return get(); },
+		};
+		window.__ModuleLoader__ = {
+			load: function (spec) {
+				try {
+					window.__MARQUEE__ = spec.factory(function (name) {
+						if (name === "react") return React;
+						return {};
+					});
+				} catch (e) {
+					window.__MARQUEE_ERR__ = String((e && e.stack) || e);
+				}
+			},
+		};
+	})();
+</script>
+<script src="../client.js?v=20261025c"></script>
+<script src="./rimlight-lab.js?v=20261025c"></script>
+<script>
+	(function () {
+		var sw = document.getElementById("sweep");
+		var swv = document.getElementById("v-sweep");
+		if (sw) {
+			var applySweep = function () {
+				var v = Number(sw.value);
+				swv.textContent = v.toFixed(2);
+				if (window.__MARQUEE__ && window.__MARQUEE__.__debug && window.__MARQUEE__.__debug.setSweepAmp) {
+					window.__MARQUEE__.__debug.setSweepAmp(v);
+				}
+			};
+			sw.addEventListener("input", applySweep);
+			setTimeout(applySweep, 60);
+		}
+		var sp = document.getElementById("speed");
+		var sv = document.getElementById("v-speed");
+		if (!sp) return;
+		function apply() {
+			var v = Number(sp.value);
+			sv.textContent = v.toFixed(2);
+			if (window.__LAB__) window.__LAB__.setSpeed(v);
+		}
+		sp.addEventListener("input", apply);
+		setTimeout(apply, 60);
+	})();
+</script>
+</body>
+</html>
