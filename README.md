@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/icon-256.png" width="112" alt="Rimlight icon"></p>
 
-<p align="center">为 DeepSeek Harness 提供「思考时沿窗口边缘流动的流星光带」的轻量美化插件。</p>
+<p align="center">为 DeepSeek Harness 提供「思考时沿窗口边缘非线性流动的流星光带」的轻量美化插件。</p>
 
 <p align="center">
   <a href="https://polang233.github.io/dsh-plugin-index/zh/plugins/dsh-rimlight/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdshopen.org%2Fbadge%2Fdsh-rimlight.json&amp;style=flat-square" alt="开放插件市场" height="20"></a>
@@ -29,6 +29,16 @@
 
 <sub>截图为调试台渲染结果（复刻的客户端窗口，深色主题）。</sub>
 
+### 实际运行效果
+
+| ![桌面端思考中](docs/real-desktop-thinking.png) | ![桌面端光带头部](docs/real-desktop-comet.png) |
+| --- | --- |
+| 适配窗口圆角 | 对话结束后返回对话框 |
+
+<p align="center"><img src="docs/real-mobile.jpg" width="280" alt="移动端效果"><br><sub>适配移动设备比例</sub></p>
+
+<p align="center"><img src="docs/real-settings.png" width="280" alt="V1.0.1 版本插件设置项"><br><sub>V1.0.1版本插件设置项</sub></p>
+
 ## 工作方式
 
 会话进入思考状态后，客户端窗口的圆角边框上会出现一条流星式光带，沿边框环绕运行。同时处于思考状态的会话各自拥有一条光带，最多 4 条，按所属会话使用的模型取色，并在同一圈内等距分布。会话结束时，光带飞向与之对应的界面位置，绕行一圈后淡出。
@@ -37,7 +47,7 @@
 
 | 行为 | 说明 |
 | --- | --- |
-| **思考时流动** | 会话运行期间，光带沿窗口圆角边框顺时针环绕：头部最亮，尾部向后拖出渐变，经过圆角时随轨道弯折。 |
+| **思考时流动** | 会话运行期间，光带沿窗口圆角边框顺时针非线性运动：头部最亮，尾部向后拖出渐变，经过圆角时随轨道弯折。 |
 | **多会话并行** | 最多 4 条，每条对应一个会话。新光带加入后，所有光带在 4 秒内同步加减速，平滑收敛到等距位置。 |
 | **等待回复反向** | 会话进入等待用户输入的状态时改为逆时针；用户回复后恢复顺时针，方向切换带缓动过渡。 |
 | **按模型配色** | 每条光带按所属会话所用的模型取色，预设 12 套（见下表），可在插件设置中固定全局使用配色。 |

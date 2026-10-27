@@ -29,6 +29,16 @@
 
 <sub>Captured from the lab page, which renders a replica of the client window in the dark theme.</sub>
 
+### Running for real
+
+| ![Thinking in the desktop client](docs/real-desktop-thinking.png) | ![The head passing the composer](docs/real-desktop-comet.png) |
+| --- | --- |
+| Follows the rounded corners of the window | Returns to the composer once the turn ends |
+
+<p align="center"><img src="docs/real-mobile.jpg" width="280" alt="Running on mobile"><br><sub>Scales to mobile proportions</sub></p>
+
+<p align="center"><img src="docs/real-settings.png" width="280" alt="The plugin's settings panel in v1.0.1"><br><sub>The plugin's settings panel in v1.0.1</sub></p>
+
 ## How it works
 
 Once a session enters the thinking state, a comet-like light band appears on the rounded frame of the client window and travels around it. Every session that is thinking at the same time gets its own band — up to four — colored by the model that session is using and evenly spaced along the same loop. When a session finishes, its band flies to the matching spot in the interface, makes one lap around it, and fades out.
