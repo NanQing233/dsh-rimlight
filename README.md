@@ -6,6 +6,8 @@
 
 <p align="center">
   <a href="https://polang233.github.io/dsh-plugin-index/zh/plugins/dsh-rimlight/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fdshopen.org%2Fbadge%2Fdsh-rimlight.json&amp;style=flat-square" alt="开放插件市场" height="20"></a>
+  <a href="https://awesome-dsh-plugin.com"><img src="https://awesome-dsh-plugin.com/badge.svg" alt="Awesome DSH Plugin" height="20"></a>
+  <a href="https://dsh-plugin.org/plugins/nanqing233/dsh-rimlight"><img src="https://dsh-plugin.org/badges/listed.svg" alt="Listed on dsh-plugin.org" height="20"></a>
   <a href="https://www.npmjs.com/package/dsh-rimlight"><img src="https://img.shields.io/npm/v/dsh-rimlight?style=flat-square&amp;label=npm" alt="npm 版本" height="20"></a>
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/dsh-rimlight?style=flat-square" alt="许可证" height="20"></a>
 </p>
