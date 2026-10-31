@@ -61,8 +61,6 @@ Once a session enters the thinking state, a comet-like light band appears on the
 | --- | --- |
 | ![Three bands](docs/effect-three.png) | ![Reverse flow](docs/effect-reverse.png) |
 
-![Bend detail at a corner](docs/detail-corner.png)
-
 ## Colors
 
 Gradients run from tail to head. The table lists the solid stops; the tail starts and ends with the same color at low opacity, so the first fully opaque stop is used as the starting point:
@@ -80,7 +78,7 @@ Gradients run from tail to head. The table lists the solid stops; the tail start
 | `minimax` | MiniMax | `#ff5fc0` → `#ff2d63` → `#ffdcec` | — |
 | `meta` | Meta | `#2f7bff` → `#0866ff` → `#e2eeff` | — |
 | `nvidia` | NVIDIA | `#76b900` → `#a4e01f` → `#f4ffd9` | — |
-| `unknown` | Prism | Layered translucent whites | Liquid glass: dispersion and edge deformation |
+| `unknown` | Prism | Layered translucent whites | Dispersion and edge deformation |
 
 Model detection uses the model id and name first, and the provider only as a fallback. When nothing matches, **Prism** is used; a different palette can be chosen in the settings.
 

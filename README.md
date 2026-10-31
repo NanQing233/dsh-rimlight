@@ -61,8 +61,6 @@
 | --- | --- |
 | ![三条光带](docs/effect-three.png) | ![反向流动](docs/effect-reverse.png) |
 
-![拐角处的弯折细节](docs/detail-corner.png)
-
 ## 配色
 
 渐变方向为尾部 → 头部，下表列出各 stop 的实色（尾部起止为同色低透明度，故从首个不透明 stop 起列）：
@@ -80,7 +78,7 @@
 | `minimax` | MiniMax | `#ff5fc0` → `#ff2d63` → `#ffdcec` | — |
 | `meta` | Meta | `#2f7bff` → `#0866ff` → `#e2eeff` | — |
 | `nvidia` | NVIDIA | `#76b900` → `#a4e01f` → `#f4ffd9` | — |
-| `unknown` | Prism | 半透明白多层叠加 | 液态玻璃：色散、边缘形变 |
+| `unknown` | Prism | 半透明白多层叠加 | 色散、边缘形变 |
 
 模型识别以模型 id 与名称为主、供应商为辅；无法识别时使用 **Prism**，可在设置中改为其它配色。
 
