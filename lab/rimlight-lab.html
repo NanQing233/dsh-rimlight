@@ -1,363 +1,1144 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<title>Rimlight Lab · 交互式调试台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141218" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fef7ff" media="(prefers-color-scheme: light)">
+<title>Rimlight Lab · Material 3 调试台</title>
+<link rel="icon" type="image/svg+xml" href="../icon.svg">
+<script>
+	// Layout mode, decided before the first paint so the page never flashes the
+	// wrong arrangement.
+	//   ?layout=mobile|desktop   forces it (bookmarkable, used by captures)
+	//   phone / tablet UA        -> mobile
+	//   coarse pointer on <=1024 -> mobile (tablet without a phone UA)
+	//   narrow window (<=760)    -> mobile, so a half-screen desktop window gets
+	//                              the same bottom-sheet arrangement
+	(function () {
+		var root = document.documentElement;
+		var forced = /(?:\?|&)layout=(mobile|desktop)/.exec(location.search || "");
+		var forceMode = forced ? forced[1] : null;
+		var isMobileUa = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS|Windows Phone/i.test(navigator.userAgent || "");
+		function decide() {
+			if (forceMode) return forceMode;
+			var w = window.innerWidth || 1280;
+			var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+			if (isMobileUa) return "mobile";
+			if (coarse && w <= 1024) return "mobile";
+			if (w <= 760) return "mobile";
+			return "desktop";
+		}
+		function apply() { root.setAttribute("data-layout", decide()); }
+		apply();
+		// `100dvh` tracks the mobile browser chrome; older engines keep 100vh.
+		if (window.CSS && CSS.supports && CSS.supports("height", "100dvh")) root.classList.add("has-dvh");
+		var pending = 0;
+		window.addEventListener("resize", function () {
+			if (pending) return;
+			pending = setTimeout(function () { pending = 0; apply(); }, 120);
+		});
+	})();
+</script>
+<!--
+	Material Design 3 shell for the Rimlight lab.
+
+	Built strictly on the tokens published by @material/web 2.4.0
+	(tokens/v0_192: _md-sys-color, _md-sys-typescale, _md-sys-shape,
+	_md-sys-state, _md-sys-elevation, _md-sys-motion), so every colour role,
+	type size and corner radius below is the baseline M3 value rather than a
+	hand-picked approximation:
+
+	  m3.material.io/develop/web                (library overview)
+	  m3.material.io/develop/web/get-started    (quick start)
+	  m3.material.io/develop/web/theming        (tokens)
+	  m3.material.io/components/buttons|switch|slider|text-fields|cards
+	                                            (component anatomy)
+
+	The page is deliberately dependency-free: this machine cannot reach the
+	CDN from the browser, so the M3 tokens are vendored as CSS custom
+	properties and the components are implemented against the spec's metrics
+	instead of pulling <md-*>/Lit over the network. Class names follow the
+	typescale convention (`.md-typescale-*`) and every component token maps to
+	a --md-sys-* system token, so swapping in the real @material/web
+	elements later would not require renaming anything.
+-->
 <style>
-	/* ------------------------------------------------------------------
-	   Rimlight Lab · liquid glass, two themes
-	   Background: blue gradient (deep navy by default, pale ice in light
-	   mode). Controls & cards: glass material built from an SDF
-	   displacement map (feDisplacementMap on the backdrop) plus frost,
-	   tint, rim light and a directional sheen — the technique
-	   popularised by Apple's Liquid Glass and documented by
-	   github.com/samasante/liquid-glass. Pure CSS/SVG, no runtime.
-	   ------------------------------------------------------------------ */
-	:root,
-	html[data-theme="dark"] {
-		color-scheme: dark;
-		--ink: #dce7f8;
-		--ink-soft: #a9bddb;
-		--muted: #8298b8;
-		--edge-strong: rgba(150,192,255,0.30);
-		--edge-soft: rgba(96,140,205,0.45);
-		--fr-blur: 12px;
-		--fr-sat: 190%;
-		--field-op: 0.60;
-		--tex-ink: rgba(150,190,255,0.10);
-		--tex-dot: rgba(180,214,255,0.22);
-		--tex-sheen: rgba(120,170,255,0.16);
-		--bg-grad:
-			radial-gradient(960px 560px at 6% -8%, rgba(38,86,168,0.55), transparent 64%),
-			radial-gradient(820px 540px at 94% 2%, rgba(30,74,150,0.55), transparent 62%),
-			radial-gradient(760px 560px at 68% 110%, rgba(26,58,120,0.60), transparent 64%),
-			linear-gradient(165deg, #0a1120 0%, #0d1a2c 42%, #0a1626 70%, #080f1b 100%);
-		--glass-fill: linear-gradient(158deg, rgba(34,52,80,0.66), rgba(19,32,52,0.50) 52%, rgba(28,46,72,0.58));
-		--glass-rim: rgba(255,255,255,0.16);
-		--glass-shadow:
-			0 1px 0 rgba(255,255,255,0.16) inset,
-			0 -1px 0 rgba(120,170,235,0.18) inset,
-			0 18px 40px rgba(0,4,12,0.55),
-			0 3px 10px rgba(0,4,12,0.40);
-		--glass-sheen: rgba(190,220,255,0.20);
-		--panel-fill: linear-gradient(170deg, rgba(20,34,56,0.78), rgba(10,19,33,0.70) 48%, rgba(16,29,48,0.78));
-		--panel-border: rgba(140,180,245,0.22);
-		--panel-shadow: -22px 0 60px rgba(0,6,16,0.55), 1px 0 0 rgba(160,196,250,0.16) inset, 0 0 46px rgba(40,80,150,0.22) inset;
-		--panel-sheen: linear-gradient(147deg, rgba(200,225,255,0.14) 0%, rgba(200,225,255,0.04) 8%, rgba(200,225,255,0) 24%), linear-gradient(90deg, rgba(200,225,255,0.10) 0%, rgba(200,225,255,0) 12%);
-		--scroll-thumb: rgba(110,155,225,0.42);
-		--hd-ink: #cfe0f6;
-		--card-fill: linear-gradient(158deg, rgba(38,58,88,0.66), rgba(21,35,57,0.48) 52%, rgba(31,50,78,0.58));
-		--card-border: rgba(150,192,255,0.26);
-		--card-shadow: 0 1px 0 rgba(255,255,255,0.14) inset, 0 -1px 0 rgba(110,160,230,0.20) inset, 0 12px 28px rgba(0,5,14,0.45), 0 0 0 1px rgba(150,192,255,0.10);
-		--label-ink: #b6cae6;
-		--hint-ink: #90a6c6;
-		--val-ink: #cfe0f8;
-		--btn-fill: linear-gradient(158deg, rgba(52,78,116,0.80), rgba(28,46,72,0.62) 54%, rgba(40,62,94,0.72));
-		--btn-border: rgba(160,200,255,0.30);
-		--btn-ink: #dbe8fb;
-		--btn-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 -1px 0 rgba(110,160,230,0.22) inset, 0 8px 20px rgba(0,5,14,0.45), 0 0 0 1px rgba(150,192,255,0.10);
-		--btn-hover-fill: linear-gradient(158deg, rgba(72,104,150,0.88), rgba(40,64,98,0.72) 52%, rgba(56,84,124,0.82));
-		--btn-sheen: linear-gradient(118deg, rgba(220,238,255,0.30), rgba(255,255,255,0) 46%, rgba(120,170,235,0.24) 100%);
-		--primary-fill: linear-gradient(158deg, rgba(96,152,240,0.88), rgba(52,102,196,0.76) 52%, rgba(74,130,222,0.84));
-		--primary-border: rgba(170,205,255,0.42);
-		--primary-ink: #f2f8ff;
-		--primary-shadow: 0 1px 0 rgba(255,255,255,0.28) inset, 0 -1px 0 rgba(40,84,160,0.45) inset, 0 12px 30px rgba(20,70,170,0.45), 0 0 22px rgba(90,150,240,0.35);
-		--primary-hover: linear-gradient(158deg, rgba(120,172,250,0.94), rgba(70,124,214,0.84) 50%, rgba(96,150,236,0.9));
-		--track-fill: linear-gradient(180deg, rgba(120,160,215,0.42), rgba(70,105,160,0.36)), linear-gradient(90deg, rgba(96,140,205,0.55), rgba(150,190,240,0.45));
-		--track-border: rgba(150,190,245,0.28);
-		--thumb-fill: radial-gradient(circle at 32% 26%, #ffffff, rgba(226,240,255,0.86) 42%, rgba(140,180,236,0.95));
-		--thumb-shadow: 0 3px 10px rgba(0,6,16,0.55), 0 1px 0 rgba(255,255,255,0.9) inset;
-		--select-fill: linear-gradient(158deg, rgba(50,74,110,0.80), rgba(28,46,72,0.64));
-		--select-ink: #dbe8fb;
-		--option-bg: #101b2c;
-		--option-ink: #d6e4f8;
-		--chk-fill: linear-gradient(180deg, rgba(120,160,212,0.40), rgba(60,92,140,0.38));
-		--chk-border: rgba(150,192,255,0.26);
-		--chk-on: linear-gradient(180deg, rgba(96,150,238,0.92), rgba(50,98,186,0.86));
-		--chk-thumb: radial-gradient(circle closest-side at 36% 30%, #ffffff 0 46%, rgba(255,255,255,0.90) 66%, rgba(158,196,246,0.96) 88%, rgba(158,196,246,0) 100%);
-		--readout-fill: linear-gradient(158deg, rgba(28,45,72,0.80), rgba(15,27,45,0.66));
-		--readout-ink: #b9cee9;
-		--readout-border: rgba(150,192,255,0.22);
-		--footer-bg: linear-gradient(180deg, rgba(14,24,40,0.42), rgba(8,15,26,0.62));
-		--footer-border: rgba(140,180,240,0.18);
-		--footer-ink: #9db3d2;
-		--footer-link: #d3e3fa;
-		--footer-link-hover: #ffffff;
-		--footer-sep: rgba(120,160,215,0.45);
-		--footer-copy: #a9bfdc;
-		--toggle-fill: linear-gradient(158deg, rgba(40,62,94,0.82), rgba(22,38,60,0.70));
-		--toggle-knob: radial-gradient(circle at 32% 26%, #fff, rgba(226,240,255,0.9) 44%, rgba(150,190,240,0.95));
-		--toggle-ink: #1b2b45;
-		--frame-shadow: 0 34px 80px rgba(0,0,0,0.62), 0 10px 26px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 1px rgba(255,255,255,0.05);
-		--frame-border: rgba(255,255,255,0.10);
-		/* mock window (dark: neutral near-black, like the real client) */
-		--fr-bg: #151517;
-		--fr-sidebar: #1b1b1c;
-		--fr-titlebar: linear-gradient(180deg, #1d1d1f, #191a1b);
-		--fr-rule: rgba(255,255,255,0.07);
-		--fr-ink: #d7d9dd;
-		--fr-ink-strong: #e9ebef;
-		--fr-title-ink: #c3c6cc;
-		--fr-ctl-ink: #c8cbd1;
-		--fr-ctl-bg: rgba(255,255,255,0.06);
-		--fr-ctl-border: rgba(255,255,255,0.09);
-		--fr-row: rgba(255,255,255,0.055);
-		--fr-row-border: rgba(255,255,255,0.06);
-		--fr-row-sel: linear-gradient(160deg, rgba(122,158,255,0.24), rgba(122,158,255,0.08));
-		--fr-row-sel-border: rgba(140,175,255,0.34);
-		--fr-row-sel-glow: 0 0 16px rgba(96,140,255,0.18), 0 1px 0 rgba(255,255,255,0.10) inset;
-		--fr-bubble: linear-gradient(158deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02));
-		--fr-bubble-border: rgba(255,255,255,0.075);
-		--fr-bubble-shadow: 0 1px 0 rgba(255,255,255,0.05) inset;
-		--fr-bubble-user: linear-gradient(158deg, rgba(122,158,255,0.22), rgba(122,158,255,0.07));
-		--fr-bubble-user-border: rgba(140,175,255,0.26);
-		--fr-answer: linear-gradient(158deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
-		--fr-answer-border: rgba(255,255,255,0.08);
-		--fr-answer-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 12px 30px rgba(0,0,0,0.28);
-		--fr-line-a: rgba(233,235,239,0.55);
-		--fr-line-b: rgba(233,235,239,0.22);
-		--fr-composer: linear-gradient(158deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02));
-		--fr-composer-border: rgba(255,255,255,0.11);
-		--fr-composer-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 18px 40px rgba(0,0,0,0.40);
-		--fr-placeholder: #8b8f97;
-		--fr-sheen-1: rgba(255,255,255,0.07);
-		--fr-sheen-2: rgba(120,200,255,0.06);
-		--fr-sheen-op: 0.5;
-		--fr-dot-glow: rgba(255,255,255,0.35);
-		--fallback-bg: rgba(16,26,42,0.94);
-	}
-	html[data-theme="light"] {
-		color-scheme: light;
-		--ink: #1b2942;
-		--ink-soft: #4a5d7d;
-		--muted: #6d82a3;
-		--edge-strong: rgba(255,255,255,0.95);
-		--edge-soft: rgba(140,178,232,0.26);
-		--field-op: 0.46;
-		--tex-ink: rgba(255,255,255,0.40);
-		--tex-dot: rgba(46,92,170,0.22);
-		--tex-sheen: rgba(255,255,255,0.50);
-		--bg-grad:
-			radial-gradient(960px 560px at 6% -8%, rgba(168,205,255,0.36), transparent 64%),
-			radial-gradient(820px 540px at 94% 2%, rgba(186,220,255,0.34), transparent 62%),
-			radial-gradient(760px 560px at 68% 110%, rgba(206,232,255,0.44), transparent 64%),
-			linear-gradient(165deg, #fbfdff 0%, #f3f9ff 40%, #e8f2ff 66%, #fafdff 100%);
-		--glass-fill: linear-gradient(158deg, rgba(244,251,255,0.58), rgba(214,235,255,0.26) 52%, rgba(232,245,255,0.42));
-		--glass-rim: rgba(255,255,255,0.92);
-		--glass-shadow:
-			0 1px 0 rgba(255,255,255,1) inset,
-			0 -1px 0 rgba(255,255,255,0.6) inset,
-			0 14px 30px rgba(46,102,186,0.14),
-			0 2px 6px rgba(46,102,186,0.08),
-			0 0 22px rgba(180,214,255,0.30);
-		--glass-sheen: rgba(255,255,255,0.72);
-		--panel-fill: linear-gradient(170deg, rgba(240,249,255,0.44), rgba(206,232,255,0.16) 48%, rgba(228,243,255,0.30));
-		--panel-border: rgba(255,255,255,0.80);
-		--panel-shadow: -22px 0 60px rgba(40,92,176,0.14), 1px 0 0 rgba(255,255,255,0.85) inset, 0 0 44px rgba(200,226,255,0.35) inset;
-		--panel-sheen: linear-gradient(147deg, rgba(255,255,255,0.60) 0%, rgba(255,255,255,0.14) 8%, rgba(255,255,255,0) 24%), linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 12%);
-		--scroll-thumb: rgba(120,158,214,0.42);
-		--hd-ink: #26395a;
-		--card-fill: linear-gradient(158deg, rgba(240,250,255,0.54), rgba(206,232,255,0.22) 52%, rgba(224,242,255,0.38));
-		--card-border: rgba(255,255,255,0.88);
-		--card-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 -1px 0 rgba(180,206,238,0.42) inset, 0 10px 26px rgba(46,102,186,0.12), 0 0 0 1px rgba(255,255,255,0.70);
-		--label-ink: #55698c;
-		--hint-ink: #6a80a5;
-		--val-ink: #33507f;
-		--btn-fill: linear-gradient(158deg, rgba(248,253,255,0.78), rgba(212,236,255,0.42) 54%, rgba(232,246,255,0.62));
-		--btn-border: rgba(255,255,255,0.92);
-		--btn-ink: #24344f;
-		--btn-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 -1px 0 rgba(180,206,238,0.50) inset, 0 6px 16px rgba(46,102,186,0.14), 0 0 0 1px rgba(255,255,255,0.70);
-		--btn-hover-fill: linear-gradient(158deg, rgba(255,255,255,0.96), rgba(255,255,255,0.60) 52%, rgba(226,242,255,0.74));
-		--btn-sheen: linear-gradient(118deg, rgba(255,255,255,0.9), rgba(255,255,255,0) 46%, rgba(210,232,255,0.5) 100%);
-		--primary-fill: linear-gradient(158deg, rgba(226,242,255,0.94), rgba(158,200,250,0.62) 52%, rgba(196,224,255,0.82));
-		--primary-border: rgba(255,255,255,0.95);
-		--primary-ink: #14315f;
-		--primary-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 -1px 0 rgba(120,166,226,0.45) inset, 0 10px 24px rgba(80,140,220,0.26), 0 0 18px rgba(170,208,255,0.42);
-		--primary-hover: linear-gradient(158deg, rgba(240,250,255,1), rgba(196,222,250,0.72) 50%, rgba(222,240,255,0.9));
-		--track-fill: linear-gradient(180deg, rgba(255,255,255,0.62), rgba(224,238,255,0.40)), linear-gradient(90deg, rgba(166,200,244,0.50), rgba(255,255,255,0.55));
-		--track-border: rgba(255,255,255,0.88);
-		--thumb-fill: radial-gradient(circle at 32% 26%, #ffffff, rgba(255,255,255,0.78) 42%, rgba(198,222,250,0.95));
-		--thumb-shadow: 0 3px 10px rgba(64,116,196,0.30), 0 1px 0 rgba(255,255,255,0.9) inset;
-		--select-fill: linear-gradient(158deg, rgba(246,252,255,0.80), rgba(212,236,255,0.42));
-		--select-ink: #24344f;
-		--option-bg: #f7fbff;
-		--option-ink: #1b2942;
-		--chk-fill: linear-gradient(180deg, rgba(255,255,255,0.60), rgba(222,238,252,0.46));
-		--chk-border: rgba(255,255,255,0.90);
-		--chk-on: linear-gradient(180deg, rgba(190,220,255,0.95), rgba(140,184,248,0.78));
-		--chk-thumb: radial-gradient(circle closest-side at 36% 30%, #ffffff 0 46%, rgba(255,255,255,0.94) 66%, rgba(204,226,252,0.96) 88%, rgba(204,226,252,0) 100%);
-		--readout-fill: linear-gradient(158deg, rgba(242,251,255,0.70), rgba(210,234,255,0.34));
-		--readout-ink: #2f4a6e;
-		--readout-border: rgba(255,255,255,0.88);
-		--footer-bg: linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.52));
-		--footer-border: rgba(255,255,255,0.80);
-		--footer-ink: #5c729a;
-		--footer-link: #2b4468;
-		--footer-link-hover: #16304f;
-		--footer-sep: rgba(120,150,190,0.45);
-		--footer-copy: #50688f;
-		--toggle-fill: linear-gradient(158deg, rgba(250,254,255,0.85), rgba(214,236,255,0.55));
-		--toggle-knob: radial-gradient(circle at 32% 26%, #ffffff, rgba(255,255,255,0.86) 44%, rgba(190,216,250,0.95));
-		--toggle-ink: #2b4a78;
-		--frame-shadow: 0 30px 70px rgba(30,55,110,0.20), 0 8px 20px rgba(30,55,110,0.12), 0 0 0 1px rgba(20,20,24,0.05);
-		--frame-border: rgba(20,20,24,0.10);
-		/* mock window (light: plain white) */
-		--fr-bg: #ffffff;
-		--fr-sidebar: #f9fafb;
-		--fr-titlebar: linear-gradient(180deg, #fbfbfc, #f4f4f6);
-		--fr-rule: rgba(20,20,24,0.08);
-		--fr-ink: #24262b;
-		--fr-ink-strong: #15161a;
-		--fr-title-ink: #4b4f57;
-		--fr-ctl-ink: #4b4f57;
-		--fr-ctl-bg: rgba(20,20,24,0.035);
-		--fr-ctl-border: rgba(20,20,24,0.07);
-		--fr-row: rgba(20,20,24,0.035);
-		--fr-row-border: rgba(20,20,24,0.05);
-		--fr-row-sel: linear-gradient(160deg, rgba(122,158,255,0.20), rgba(122,158,255,0.07));
-		--fr-row-sel-border: rgba(110,150,240,0.35);
-		--fr-row-sel-glow: 0 0 14px rgba(96,140,255,0.14), 0 1px 0 rgba(255,255,255,0.9) inset;
-		--fr-bubble: linear-gradient(158deg, rgba(20,20,24,0.035), rgba(20,20,24,0.015));
-		--fr-bubble-border: rgba(20,20,24,0.07);
-		--fr-bubble-shadow: 0 1px 0 rgba(255,255,255,0.9) inset;
-		--fr-bubble-user: linear-gradient(158deg, rgba(77,107,254,0.14), rgba(77,107,254,0.06));
-		--fr-bubble-user-border: rgba(77,107,254,0.22);
-		--fr-answer: linear-gradient(158deg, rgba(20,20,24,0.03), rgba(20,20,24,0.012));
-		--fr-answer-border: rgba(20,20,24,0.07);
-		--fr-answer-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 10px 26px rgba(30,40,70,0.10);
-		--fr-line-a: rgba(21,22,26,0.42);
-		--fr-line-b: rgba(21,22,26,0.16);
-		--fr-composer: linear-gradient(158deg, #ffffff, #f6f8fb);
-		--fr-composer-border: rgba(20,20,24,0.10);
-		--fr-composer-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 14px 34px rgba(30,45,80,0.14);
-		--fr-placeholder: #8d9199;
-		--fr-sheen-1: rgba(255,255,255,0.90);
-		--fr-sheen-2: rgba(150,200,255,0.25);
-		--fr-sheen-op: 0.35;
-		--fr-dot-glow: rgba(120,150,255,0.55);
-		--fallback-bg: rgba(250,253,255,0.94);
-	}
+/* ===================================================================
+   1. Design tokens (generated from @material/web@2.4.0, v0_192)
+   =================================================================== */
+/* Generated from @material/web@2.4.0 tokens (v0_192) - baseline M3 scheme. */
+:root {
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-full: 9999px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-none: 0px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-state-dragged-state-layer-opacity: 0.16;
+  --md-sys-state-focus-state-layer-opacity: 0.12;
+  --md-sys-state-hover-state-layer-opacity: 0.08;
+  --md-sys-state-pressed-state-layer-opacity: 0.12;
+  --md-sys-elevation-level0: 0dp;
+  --md-sys-elevation-level1: 1dp;
+  --md-sys-elevation-level2: 3dp;
+  --md-sys-elevation-level3: 6dp;
+  --md-sys-elevation-level4: 8dp;
+  --md-sys-elevation-level5: 12dp;
+  --md-sys-motion-duration-extra-long1: 700ms;
+  --md-sys-motion-duration-extra-long2: 800ms;
+  --md-sys-motion-duration-extra-long3: 900ms;
+  --md-sys-motion-duration-extra-long4: 1000ms;
+  --md-sys-motion-duration-long1: 450ms;
+  --md-sys-motion-duration-long2: 500ms;
+  --md-sys-motion-duration-long3: 550ms;
+  --md-sys-motion-duration-long4: 600ms;
+  --md-sys-motion-duration-medium1: 250ms;
+  --md-sys-motion-duration-medium2: 300ms;
+  --md-sys-motion-duration-medium3: 350ms;
+  --md-sys-motion-duration-medium4: 400ms;
+  --md-sys-motion-duration-short1: 50ms;
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short3: 150ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-sys-motion-easing-legacy: cubic-bezier(0.4, 0, 0.2, 1);
+  --md-sys-motion-easing-legacy-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --md-sys-motion-easing-legacy-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --md-sys-motion-easing-linear: cubic-bezier(0, 0, 1, 1);
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --md-ref-typeface-brand: 'Roboto', 'Segoe UI', system-ui, sans-serif;
+  --md-ref-typeface-plain: 'Roboto', 'Segoe UI', system-ui, sans-serif;
+  --md-ref-typeface-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
 
-	* { box-sizing: border-box; }
-	html, body { height: 100%; }
-	body {
-		margin: 0;
-		color: var(--ink);
-		font: 13px/1.5 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-		background: var(--bg-grad);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		transition: background 320ms ease, color 240ms ease;
-	}
-	/* soft colour fields, so the glass actually has something to bend */
-	body::before {
-		content: "";
-		position: fixed;
-		inset: -18%;
-		pointer-events: none;
-		opacity: var(--field-op);
-		transition: opacity 320ms ease;
-		background:
-			radial-gradient(24% 20% at 22% 28%, rgba(74,140,255,0.55), rgba(74,140,255,0) 68%),
-			radial-gradient(20% 18% at 70% 18%, rgba(104,186,255,0.55), rgba(104,186,255,0) 68%),
-			radial-gradient(22% 20% at 56% 76%, rgba(255,196,228,0.52), rgba(255,196,228,0) 70%),
-			radial-gradient(18% 16% at 88% 60%, rgba(150,214,255,0.60), rgba(150,214,255,0) 70%),
-			radial-gradient(16% 14% at 34% 62%, rgba(176,208,255,0.50), rgba(176,208,255,0) 70%),
-			radial-gradient(15% 13% at 64% 40%, rgba(198,178,255,0.42), rgba(198,178,255,0) 70%);
-		filter: blur(12px);
-	}
-	body::after {
-		content: "";
-		position: fixed;
-		inset: 0;
-		pointer-events: none;
-		opacity: 0.55;
-		background-image:
-			radial-gradient(circle at 2px 2px, var(--tex-dot) 1.6px, rgba(255,255,255,0) 2.4px),
-			radial-gradient(circle at 1px 1px, var(--tex-dot) 1px, rgba(255,255,255,0) 1.7px),
-			repeating-linear-gradient(114deg, var(--tex-ink) 0 3px, rgba(255,255,255,0) 3px 16px),
-			linear-gradient(115deg, rgba(255,255,255,0) 0 62%, var(--tex-sheen) 74%, rgba(255,255,255,0) 86%);
-		background-size: 34px 34px, 13px 13px, auto, auto;
-		-webkit-mask-image: radial-gradient(80% 70% at 82% 30%, rgba(0,0,0,0.85), rgba(0,0,0,0) 72%);
-		mask-image: radial-gradient(80% 70% at 82% 30%, rgba(0,0,0,0.85), rgba(0,0,0,0) 72%);
-	}
+:root {
+  --md-sys-color-background: #fef7ff;
+  --md-sys-color-error: #b3261e;
+  --md-sys-color-error-container: #f9dedc;
+  --md-sys-color-inverse-on-surface: #f5eff7;
+  --md-sys-color-inverse-primary: #d0bcff;
+  --md-sys-color-inverse-surface: #322f35;
+  --md-sys-color-on-background: #1d1b20;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-on-error-container: #410e0b;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-on-primary-container: #21005d;
+  --md-sys-color-on-primary-fixed: #21005d;
+  --md-sys-color-on-primary-fixed-variant: #4f378b;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-on-secondary-container: #1d192b;
+  --md-sys-color-on-secondary-fixed: #1d192b;
+  --md-sys-color-on-surface: #1d1b20;
+  --md-sys-color-on-surface-variant: #49454f;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-on-tertiary-container: #31111d;
+  --md-sys-color-on-tertiary-fixed: #31111d;
+  --md-sys-color-on-tertiary-fixed-variant: #633b48;
+  --md-sys-color-outline: #79747e;
+  --md-sys-color-outline-variant: #cac4d0;
+  --md-sys-color-primary: #6750a4;
+  --md-sys-color-primary-container: #eaddff;
+  --md-sys-color-primary-fixed: #eaddff;
+  --md-sys-color-primary-fixed-dim: #d0bcff;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-secondary: #625b71;
+  --md-sys-color-secondary-container: #e8def8;
+  --md-sys-color-secondary-fixed: #e8def8;
+  --md-sys-color-secondary-fixed-dim: #ccc2dc;
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-surface: #fef7ff;
+  --md-sys-color-surface-bright: #fef7ff;
+  --md-sys-color-surface-container: #f3edf7;
+  --md-sys-color-surface-container-high: #ece6f0;
+  --md-sys-color-surface-container-highest: #e6e0e9;
+  --md-sys-color-surface-container-low: #f7f2fa;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-dim: #ded8e1;
+  --md-sys-color-surface-tint: #6750a4;
+  --md-sys-color-surface-variant: #e7e0ec;
+  --md-sys-color-tertiary: #7d5260;
+  --md-sys-color-tertiary-container: #ffd8e4;
+  --md-sys-color-tertiary-fixed: #ffd8e4;
+  --md-sys-color-tertiary-fixed-dim: #efb8c8;
+}
 
-	/* ---------------- theme toggle (top-right) ---------------- */
-	#theme-toggle {
-		position: fixed; top: 14px; right: 18px; z-index: 40;
-		width: 56px; height: 28px; padding: 0; border-radius: 999px;
-		cursor: pointer; appearance: none;
-		border: 1px solid var(--edge-strong);
-		background: var(--toggle-fill);
-		-webkit-backdrop-filter: blur(10px) saturate(170%);
-		backdrop-filter: blur(10px) saturate(170%);
-		box-shadow: 0 1px 0 rgba(255,255,255,0.55) inset, 0 6px 16px rgba(10,30,70,0.28), 0 0 0 1px rgba(255,255,255,0.30);
-		transition: background 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
-	}
-	#theme-toggle > i {
-		position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%;
-		display: flex; align-items: center; justify-content: center; color: var(--toggle-ink);
-		background: var(--toggle-knob);
-		box-shadow: 0 2px 6px rgba(10,30,70,0.38), 0 1px 0 rgba(255,255,255,0.9) inset;
-		transition: transform 280ms cubic-bezier(0.34, 1.3, 0.64, 1), color 260ms ease;
-	}
-	#theme-toggle svg { width: 13px; height: 13px; display: block; }
-	#theme-toggle .sun { display: none; }
-	html[data-theme="light"] #theme-toggle > i { transform: translateX(28px); }
-	html[data-theme="light"] #theme-toggle .sun { display: block; }
-	html[data-theme="light"] #theme-toggle .moon { display: none; }
-	#theme-toggle:hover { box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 8px 20px rgba(10,30,70,0.34), 0 0 0 1px rgba(255,255,255,0.42); }
-	#theme-toggle:active > i { transform: scale(0.94) translateX(28px); }
-	html[data-theme="dark"] #theme-toggle:active > i { transform: scale(0.94); }
+[data-theme="dark"] {
+  --md-sys-color-background: #141218;
+  --md-sys-color-error: #f2b8b5;
+  --md-sys-color-error-container: #8c1d18;
+  --md-sys-color-inverse-on-surface: #322f35;
+  --md-sys-color-inverse-primary: #6750a4;
+  --md-sys-color-inverse-surface: #e6e0e9;
+  --md-sys-color-on-background: #e6e0e9;
+  --md-sys-color-on-error: #601410;
+  --md-sys-color-on-error-container: #f9dedc;
+  --md-sys-color-on-primary: #381e72;
+  --md-sys-color-on-primary-container: #eaddff;
+  --md-sys-color-on-primary-fixed: #21005d;
+  --md-sys-color-on-primary-fixed-variant: #4f378b;
+  --md-sys-color-on-secondary: #332d41;
+  --md-sys-color-on-secondary-container: #e8def8;
+  --md-sys-color-on-secondary-fixed: #1d192b;
+  --md-sys-color-on-surface: #e6e0e9;
+  --md-sys-color-on-surface-variant: #cac4d0;
+  --md-sys-color-on-tertiary: #492532;
+  --md-sys-color-on-tertiary-container: #ffd8e4;
+  --md-sys-color-on-tertiary-fixed: #31111d;
+  --md-sys-color-on-tertiary-fixed-variant: #633b48;
+  --md-sys-color-outline: #938f99;
+  --md-sys-color-outline-variant: #49454f;
+  --md-sys-color-primary: #d0bcff;
+  --md-sys-color-primary-container: #4f378b;
+  --md-sys-color-primary-fixed: #eaddff;
+  --md-sys-color-primary-fixed-dim: #d0bcff;
+  --md-sys-color-scrim: #000000;
+  --md-sys-color-secondary: #ccc2dc;
+  --md-sys-color-secondary-container: #4a4458;
+  --md-sys-color-secondary-fixed: #e8def8;
+  --md-sys-color-secondary-fixed-dim: #ccc2dc;
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-surface: #141218;
+  --md-sys-color-surface-bright: #3b383e;
+  --md-sys-color-surface-container: #211f26;
+  --md-sys-color-surface-container-high: #2b2930;
+  --md-sys-color-surface-container-highest: #36343b;
+  --md-sys-color-surface-container-low: #1d1b20;
+  --md-sys-color-surface-container-lowest: #0f0d13;
+  --md-sys-color-surface-dim: #141218;
+  --md-sys-color-surface-tint: #d0bcff;
+  --md-sys-color-surface-variant: #49454f;
+  --md-sys-color-tertiary: #efb8c8;
+  --md-sys-color-tertiary-container: #633b48;
+  --md-sys-color-tertiary-fixed: #ffd8e4;
+  --md-sys-color-tertiary-fixed-dim: #efb8c8;
+}
 
-	/* ---------------- glass material ---------------- */
-	.lg {
-		position: relative;
-		isolation: isolate;
-		background: var(--glass-fill);
-		-webkit-backdrop-filter: blur(var(--fr-blur)) saturate(var(--fr-sat));
-		backdrop-filter: blur(var(--fr-blur)) saturate(var(--fr-sat));
-		border: 1px solid var(--glass-rim);
-		box-shadow: var(--glass-shadow);
-	}
-	/* rim light + sheen: what makes it read as a lens rather than a blur */
-	.lg::before {
-		content: "";
-		position: absolute;
-		inset: 0;
-		border-radius: inherit;
-		pointer-events: none;
-		background:
-			linear-gradient(146deg, var(--glass-sheen) 0%, rgba(255,255,255,0.18) 6%, rgba(255,255,255,0) 17%),
-			linear-gradient(90deg, rgba(255,255,255,0) 6%, var(--glass-sheen) 22%, rgba(255,255,255,0) 40%),
-			radial-gradient(130% 86% at 16% -6%, var(--glass-sheen), rgba(255,255,255,0) 56%),
-			radial-gradient(120% 70% at 84% 112%, rgba(190,218,255,0.35), rgba(214,234,255,0) 62%);
-		mix-blend-mode: screen;
-	}
-	.lg::after {
-		content: "";
-		position: absolute;
-		inset: 1px;
-		border-radius: inherit;
-		pointer-events: none;
-		box-shadow:
-			0 0 0 1px rgba(255,255,255,0.35) inset,
-			0 10px 22px rgba(255,255,255,0.20) inset;
-		opacity: 0.75;
-	}
+:root {
+  --md-sys-typescale-display-large-size: 3.5625rem;
+  --md-sys-typescale-display-large-line-height: 4rem;
+  --md-sys-typescale-display-large-weight: 400;
+  --md-sys-typescale-display-large-tracking: 0.015625rem;
+  --md-sys-typescale-display-large-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-display-medium-size: 2.8125rem;
+  --md-sys-typescale-display-medium-line-height: 3.25rem;
+  --md-sys-typescale-display-medium-weight: 400;
+  --md-sys-typescale-display-medium-tracking: 0rem;
+  --md-sys-typescale-display-medium-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-display-small-size: 2.25rem;
+  --md-sys-typescale-display-small-line-height: 2.75rem;
+  --md-sys-typescale-display-small-weight: 400;
+  --md-sys-typescale-display-small-tracking: 0rem;
+  --md-sys-typescale-display-small-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-large-size: 2rem;
+  --md-sys-typescale-headline-large-line-height: 2.5rem;
+  --md-sys-typescale-headline-large-weight: 400;
+  --md-sys-typescale-headline-large-tracking: 0rem;
+  --md-sys-typescale-headline-large-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-medium-size: 1.75rem;
+  --md-sys-typescale-headline-medium-line-height: 2.25rem;
+  --md-sys-typescale-headline-medium-weight: 400;
+  --md-sys-typescale-headline-medium-tracking: 0rem;
+  --md-sys-typescale-headline-medium-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-headline-small-size: 1.5rem;
+  --md-sys-typescale-headline-small-line-height: 2rem;
+  --md-sys-typescale-headline-small-weight: 400;
+  --md-sys-typescale-headline-small-tracking: 0rem;
+  --md-sys-typescale-headline-small-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-title-large-size: 1.375rem;
+  --md-sys-typescale-title-large-line-height: 1.75rem;
+  --md-sys-typescale-title-large-weight: 400;
+  --md-sys-typescale-title-large-tracking: 0rem;
+  --md-sys-typescale-title-large-font: var(--md-ref-typeface-brand);
+  --md-sys-typescale-title-medium-size: 1rem;
+  --md-sys-typescale-title-medium-line-height: 1.5rem;
+  --md-sys-typescale-title-medium-weight: 500;
+  --md-sys-typescale-title-medium-tracking: 0.009375rem;
+  --md-sys-typescale-title-medium-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-title-small-size: 0.875rem;
+  --md-sys-typescale-title-small-line-height: 1.25rem;
+  --md-sys-typescale-title-small-weight: 400;
+  --md-sys-typescale-title-small-tracking: 0.00625rem;
+  --md-sys-typescale-title-small-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-large-size: 1rem;
+  --md-sys-typescale-body-large-line-height: 1.5rem;
+  --md-sys-typescale-body-large-weight: 400;
+  --md-sys-typescale-body-large-tracking: 0.03125rem;
+  --md-sys-typescale-body-large-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-medium-size: 0.875rem;
+  --md-sys-typescale-body-medium-line-height: 1.25rem;
+  --md-sys-typescale-body-medium-weight: 400;
+  --md-sys-typescale-body-medium-tracking: 0.015625rem;
+  --md-sys-typescale-body-medium-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-body-small-size: 0.75rem;
+  --md-sys-typescale-body-small-line-height: 1rem;
+  --md-sys-typescale-body-small-weight: 400;
+  --md-sys-typescale-body-small-tracking: 0.025rem;
+  --md-sys-typescale-body-small-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-large-size: 0.875rem;
+  --md-sys-typescale-label-large-line-height: 1.25rem;
+  --md-sys-typescale-label-large-weight: 500;
+  --md-sys-typescale-label-large-tracking: 0.00625rem;
+  --md-sys-typescale-label-large-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-medium-size: 0.75rem;
+  --md-sys-typescale-label-medium-line-height: 1rem;
+  --md-sys-typescale-label-medium-weight: 500;
+  --md-sys-typescale-label-medium-tracking: 0.03125rem;
+  --md-sys-typescale-label-medium-font: var(--md-ref-typeface-plain);
+  --md-sys-typescale-label-small-size: 0.6875rem;
+  --md-sys-typescale-label-small-line-height: 1rem;
+  --md-sys-typescale-label-small-weight: 500;
+  --md-sys-typescale-label-small-tracking: 0.03125rem;
+  --md-sys-typescale-label-small-font: var(--md-ref-typeface-plain);
+}
 
-	#stage { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 20px; min-width: 0; z-index: 1; }
+.md-typescale-display-large {
+  font-family: var(--md-sys-typescale-display-large-font);
+  font-size: var(--md-sys-typescale-display-large-size);
+  line-height: var(--md-sys-typescale-display-large-line-height);
+  font-weight: var(--md-sys-typescale-display-large-weight);
+  letter-spacing: var(--md-sys-typescale-display-large-tracking);
+}
 
+.md-typescale-display-medium {
+  font-family: var(--md-sys-typescale-display-medium-font);
+  font-size: var(--md-sys-typescale-display-medium-size);
+  line-height: var(--md-sys-typescale-display-medium-line-height);
+  font-weight: var(--md-sys-typescale-display-medium-weight);
+  letter-spacing: var(--md-sys-typescale-display-medium-tracking);
+}
+
+.md-typescale-display-small {
+  font-family: var(--md-sys-typescale-display-small-font);
+  font-size: var(--md-sys-typescale-display-small-size);
+  line-height: var(--md-sys-typescale-display-small-line-height);
+  font-weight: var(--md-sys-typescale-display-small-weight);
+  letter-spacing: var(--md-sys-typescale-display-small-tracking);
+}
+
+.md-typescale-headline-large {
+  font-family: var(--md-sys-typescale-headline-large-font);
+  font-size: var(--md-sys-typescale-headline-large-size);
+  line-height: var(--md-sys-typescale-headline-large-line-height);
+  font-weight: var(--md-sys-typescale-headline-large-weight);
+  letter-spacing: var(--md-sys-typescale-headline-large-tracking);
+}
+
+.md-typescale-headline-medium {
+  font-family: var(--md-sys-typescale-headline-medium-font);
+  font-size: var(--md-sys-typescale-headline-medium-size);
+  line-height: var(--md-sys-typescale-headline-medium-line-height);
+  font-weight: var(--md-sys-typescale-headline-medium-weight);
+  letter-spacing: var(--md-sys-typescale-headline-medium-tracking);
+}
+
+.md-typescale-headline-small {
+  font-family: var(--md-sys-typescale-headline-small-font);
+  font-size: var(--md-sys-typescale-headline-small-size);
+  line-height: var(--md-sys-typescale-headline-small-line-height);
+  font-weight: var(--md-sys-typescale-headline-small-weight);
+  letter-spacing: var(--md-sys-typescale-headline-small-tracking);
+}
+
+.md-typescale-title-large {
+  font-family: var(--md-sys-typescale-title-large-font);
+  font-size: var(--md-sys-typescale-title-large-size);
+  line-height: var(--md-sys-typescale-title-large-line-height);
+  font-weight: var(--md-sys-typescale-title-large-weight);
+  letter-spacing: var(--md-sys-typescale-title-large-tracking);
+}
+
+.md-typescale-title-medium {
+  font-family: var(--md-sys-typescale-title-medium-font);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  line-height: var(--md-sys-typescale-title-medium-line-height);
+  font-weight: var(--md-sys-typescale-title-medium-weight);
+  letter-spacing: var(--md-sys-typescale-title-medium-tracking);
+}
+
+.md-typescale-title-small {
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  line-height: var(--md-sys-typescale-title-small-line-height);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+  letter-spacing: var(--md-sys-typescale-title-small-tracking);
+}
+
+.md-typescale-body-large {
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
+  font-weight: var(--md-sys-typescale-body-large-weight);
+  letter-spacing: var(--md-sys-typescale-body-large-tracking);
+}
+
+.md-typescale-body-medium {
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  font-weight: var(--md-sys-typescale-body-medium-weight);
+  letter-spacing: var(--md-sys-typescale-body-medium-tracking);
+}
+
+.md-typescale-body-small {
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+  letter-spacing: var(--md-sys-typescale-body-small-tracking);
+}
+
+.md-typescale-label-large {
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  line-height: var(--md-sys-typescale-label-large-line-height);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  letter-spacing: var(--md-sys-typescale-label-large-tracking);
+}
+
+.md-typescale-label-medium {
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  letter-spacing: var(--md-sys-typescale-label-medium-tracking);
+}
+
+.md-typescale-label-small {
+  font-family: var(--md-sys-typescale-label-small-font);
+  font-size: var(--md-sys-typescale-label-small-size);
+  line-height: var(--md-sys-typescale-label-small-line-height);
+  font-weight: var(--md-sys-typescale-label-small-weight);
+  letter-spacing: var(--md-sys-typescale-label-small-tracking);
+}
+
+</style>
+<style>
+/* ===================================================================
+   2. Material 3 components
+   =================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Motion tokens are written as literals inside `transition`: Chromium does not
+   substitute var() in the transition shorthand, which silently killed every
+   animation. Values are the M3 tokens: duration-short4 200ms,
+   duration-medium2 300ms, easing-emphasized / easing-standard
+   cubic-bezier(0.2, 0, 0, 1). */
+
+html, body { height: 100%; }
+
+body {
+	margin: 0;
+	background: var(--md-sys-color-surface);
+	color: var(--md-sys-color-on-surface);
+	font-family: var(--md-ref-typeface-plain);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	-webkit-font-smoothing: antialiased;
+	transition: background-color 300ms cubic-bezier(0.2, 0, 0, 1),
+	            color 300ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+::selection { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+
+/* --- top app bar (small): 64dp, surface-container, title on the left ---- */
+.m3-app-bar {
+	position: relative;
+	flex: 0 0 auto;
+	height: 64px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 0 8px 0 16px;
+	background: var(--md-sys-color-surface-container);
+	color: var(--md-sys-color-on-surface);
+}
+.m3-app-bar__mark {
+	flex: 0 0 auto;
+	width: 40px; height: 40px;
+	display: grid; place-items: center;
+	border-radius: var(--md-sys-shape-corner-medium);
+	background: transparent;
+}
+/* The plugin ships two logo cuts: the pale arc for dark surfaces and the blue
+   one for light surfaces. The favicon uses icon.svg, the same mark. */
+.m3-app-bar__mark img { width: 32px; height: 32px; display: block; }
+.m3-app-bar__mark .mark-on-light { display: none; }
+html[data-theme="light"] .m3-app-bar__mark .mark-on-light { display: block; }
+html[data-theme="light"] .m3-app-bar__mark .mark-on-dark { display: none; }
+.m3-app-bar__title { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1 1 auto; }
+.m3-app-bar__title h1 { margin: 0; color: var(--md-sys-color-on-surface); }
+.m3-app-bar__title p { margin: 0; color: var(--md-sys-color-on-surface-variant); }
+.m3-app-bar__actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+/* The language switch is a text button with no container: it sits beside the
+   theme icon and reads as a label you can click, not as another chip. */
+.m3-lang-toggle {
+	appearance: none;
+	-webkit-appearance: none;
+	min-width: 40px;
+	height: 40px;
+	padding: 0 8px;
+	border: none;
+	border-radius: 9999px;
+	background: transparent;
+	color: var(--md-sys-color-on-surface-variant);
+	font-family: var(--md-ref-typeface-plain);
+	font-size: var(--md-sys-typescale-label-large-size);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	font-weight: 500;
+	cursor: pointer;
+	transition: color 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-lang-toggle:hover { color: var(--md-sys-color-on-surface); }
+.m3-lang-toggle:focus-visible { outline: 2px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+/* Brand signature strip: three segments, one per colour the palette uses. */
+.m3-brand-strip {
+	position: absolute;
+	left: 0; right: 0; bottom: 0;
+	height: 4px;
+	display: flex;
+	pointer-events: none;
+}
+.m3-brand-strip span { flex: 1 1 0; background-color: var(--md-sys-color-primary); }
+.m3-brand-strip span:nth-child(2) { background-color: var(--md-sys-color-secondary); }
+.m3-brand-strip span:nth-child(3) { background-color: var(--md-sys-color-tertiary); }
+
+/* Colour changes ease instead of snapping: the roles are custom properties, so
+   the transition sits on the properties that consume them. */
+.m3-app-bar,
+.m3-app-bar__mark,
+.m3-card,
+#stage,
+.m3-button,
+.m3-icon-button,
+.m3-brand-strip span,
+.m3-switch__track,
+.m3-switch__thumb,
+.m3-slider-value,
+.m3-field select,
+.m3-field__label,
+.m3-readout,
+#footer,
+#footer a {
+	transition: background-color 480ms cubic-bezier(0.2, 0, 0, 1),
+	            color 480ms cubic-bezier(0.2, 0, 0, 1),
+	            border-color 480ms cubic-bezier(0.2, 0, 0, 1),
+	            box-shadow 480ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* --- icon button: 40dp, full radius, on-surface-variant, state layers --- */
+.m3-icon-button {
+	position: relative;
+	width: 40px; height: 40px;
+	display: inline-grid; place-items: center;
+	border: none; padding: 0;
+	border-radius: var(--md-sys-shape-corner-full);
+	background: transparent;
+	color: var(--md-sys-color-on-surface-variant);
+	cursor: pointer;
+	overflow: hidden;
+	transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-icon-button svg { width: 20px; height: 20px; display: block; position: relative; z-index: 1; }
+/* The toggle swaps a sun for a moon with the scheme, like any icon button. */
+#theme-toggle .sun { display: none; }
+html[data-theme="light"] #theme-toggle .sun { display: block; }
+html[data-theme="light"] #theme-toggle .moon { display: none; }
+.m3-icon-button::after {
+	content: ""; position: absolute; inset: 0; border-radius: inherit;
+	background: currentColor; opacity: 0;
+	transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-icon-button:hover::after { opacity: var(--md-sys-state-hover-state-layer-opacity); }
+.m3-icon-button:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: -2px; }
+.m3-icon-button:focus-visible::after { opacity: var(--md-sys-state-focus-state-layer-opacity); }
+.m3-icon-button:active::after { opacity: var(--md-sys-state-pressed-state-layer-opacity); }
+
+/* --- buttons: 40dp, full radius, label-large ---------------------------- */
+.m3-button {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	min-height: 40px;
+	padding: 0 24px;
+	border: none;
+	border-radius: var(--md-sys-shape-corner-full);
+	font-family: var(--md-ref-typeface-plain);
+	font-size: var(--md-sys-typescale-label-large-size);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	font-weight: var(--md-sys-typescale-label-large-weight);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	white-space: nowrap;
+	cursor: pointer;
+	overflow: hidden;
+	transition: box-shadow 200ms cubic-bezier(0.2, 0, 0, 1),
+	            background-color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-button::after {
+	content: ""; position: absolute; inset: 0; border-radius: inherit;
+	background: currentColor; opacity: 0;
+	transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-button:hover::after { opacity: var(--md-sys-state-hover-state-layer-opacity); }
+.m3-button:focus-visible { outline: 2px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+.m3-button:focus-visible::after { opacity: var(--md-sys-state-focus-state-layer-opacity); }
+.m3-button:active::after { opacity: var(--md-sys-state-pressed-state-layer-opacity); }
+
+.m3-button--filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.m3-button--filled:hover { box-shadow: 0 1px 2px 0 rgba(0,0,0,.30), 0 1px 3px 1px rgba(0,0,0,.15); } /* elevation level1 */
+.m3-button--tonal { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.m3-button--outlined {
+	background: transparent;
+	color: var(--md-sys-color-primary);
+	border: 1px solid var(--md-sys-color-outline);
+}
+.m3-button--text { background: transparent; color: var(--md-sys-color-primary); padding: 0 12px; }
+
+/* --- card: 12dp corner; outlined = surface + outline-variant ----------- */
+.m3-card {
+	border-radius: var(--md-sys-shape-corner-medium);
+	padding: 16px;
+	background: var(--md-sys-color-surface);
+}
+.m3-card--outlined { border: 1px solid var(--md-sys-color-outline-variant); }
+.m3-card--filled {
+	background: var(--md-sys-color-surface-container-highest);
+	border: 1px solid transparent;
+	box-shadow: inset 4px 0 0 var(--md-sys-color-tertiary);
+}
+.m3-card__title { margin: 0 0 12px; color: var(--md-sys-color-on-surface-variant); }
+.m3-card__title + .m3-support { margin-top: 12px; }
+.m3-support {
+	margin: 12px 0 0;
+	color: var(--md-sys-color-on-surface-variant);
+}
+
+/* --- switch: track 52x32 + 2dp outline, thumb 16 -> 24 ----------------- */
+.m3-switch-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	min-height: 48px;
+}
+.m3-switch-row + .m3-switch-row { border-top: 1px solid var(--md-sys-color-outline-variant); }
+.m3-switch-row__label { color: var(--md-sys-color-on-surface); flex: 1 1 auto; }
+.m3-switch {
+	position: relative;
+	flex: 0 0 auto;
+	width: 52px;
+	height: 32px;
+	display: inline-block;
+}
+.m3-switch input {
+	position: absolute;
+	inset: 0;
+	width: 100%; height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+	z-index: 2;
+}
+.m3-switch__track {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--md-sys-shape-corner-full);
+	background: var(--md-sys-color-surface-container-highest);
+	border: 2px solid var(--md-sys-color-outline);
+	transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1),
+	            border-color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-switch__thumb {
+	position: absolute;
+	top: 8px; left: 8px;
+	width: 16px; height: 16px;
+	border-radius: 50%;
+	background: var(--md-sys-color-outline);
+	transition: width 200ms cubic-bezier(0.2, 0, 0, 1),
+	            height 200ms cubic-bezier(0.2, 0, 0, 1),
+	            top 200ms cubic-bezier(0.2, 0, 0, 1),
+	            left 200ms cubic-bezier(0.2, 0, 0, 1),
+	            background-color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-switch input:checked ~ .m3-switch__track {
+	background: var(--md-sys-color-primary);
+	border-color: var(--md-sys-color-primary);
+}
+.m3-switch input:checked ~ .m3-switch__thumb {
+	width: 24px; height: 24px;
+	top: 4px; left: 24px;
+	background: var(--md-sys-color-on-primary);
+}
+.m3-switch input:focus-visible ~ .m3-switch__track { outline: 2px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+
+/* --- slider: 4dp track, 20dp handle, 44dp touch target ----------------- */
+.m3-slider-row + .m3-slider-row { margin-top: 16px; }
+.m3-slider-label {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	color: var(--md-sys-color-on-surface-variant);
+}
+.m3-slider-value { color: var(--md-sys-color-tertiary); font-variant-numeric: tabular-nums; }
+.m3-slider {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
+	height: 44px;
+	margin: 0;
+	background: transparent;
+	cursor: pointer;
+}
+.m3-slider::-webkit-slider-runnable-track {
+	height: 4px;
+	border-radius: 2px;
+	background: linear-gradient(
+		to right,
+		var(--md-sys-color-primary) 0 var(--m3-slider-value, 0%),
+		var(--md-sys-color-secondary-container) var(--m3-slider-value, 0%) 100%
+	);
+}
+.m3-slider::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 20px; height: 20px;
+	margin-top: -8px;
+	border-radius: 50%;
+	border: none;
+	background: var(--md-sys-color-primary);
+	box-shadow: 0 0 0 0 color-mix(in srgb, var(--md-sys-color-on-primary) 0%, transparent);
+	transition: box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-slider:hover::-webkit-slider-thumb { box-shadow: 0 0 0 6px color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent); }
+.m3-slider:active::-webkit-slider-thumb { box-shadow: 0 0 0 10px color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent); }
+.m3-slider:focus-visible { outline: none; }
+.m3-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 10px color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent); }
+.m3-slider::-moz-range-track {
+	height: 4px;
+	border-radius: 2px;
+	background: var(--md-sys-color-secondary-container);
+}
+.m3-slider::-moz-range-progress {
+	height: 4px;
+	border-radius: 2px;
+	background: var(--md-sys-color-primary);
+}
+.m3-slider::-moz-range-thumb {
+	width: 20px; height: 20px;
+	border: none;
+	border-radius: 50%;
+	background: var(--md-sys-color-primary);
+}
+
+/* --- segmented button: M3's form for "one of a few fixed values" ---------- */
+/* A range with four stops is a slider pretending to be a switch; Material's
+   segmented button is the pattern for a small, fixed set. The dividers are the
+   1px grid gap showing the container's outline colour through. */
+.m3-seg-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	color: var(--md-sys-color-on-surface-variant);
+}
+.m3-segmented {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 1px;
+	height: 40px;
+	margin-top: 8px;
+	border: 1px solid var(--md-sys-color-outline);
+	border-radius: 9999px;
+	background: var(--md-sys-color-outline);
+	overflow: hidden;
+}
+.m3-segment {
+	appearance: none;
+	-webkit-appearance: none;
+	min-width: 0;
+	margin: 0;
+	border: none;
+	background: var(--md-sys-color-surface);
+	color: var(--md-sys-color-on-surface);
+	font-family: var(--md-ref-typeface-plain);
+	font-size: var(--md-sys-typescale-label-large-size);
+	line-height: var(--md-sys-typescale-label-large-line-height);
+	letter-spacing: var(--md-sys-typescale-label-large-tracking);
+	cursor: pointer;
+	transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1), color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-segment:first-child { border-radius: 9999px 0 0 9999px; }
+.m3-segment:last-child { border-radius: 0 9999px 9999px 0; }
+.m3-segment[aria-checked="true"] {
+	background: var(--md-sys-color-secondary-container);
+	color: var(--md-sys-color-on-secondary-container);
+	font-weight: 600;
+}
+.m3-segment:not([aria-checked="true"]):hover {
+	background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, var(--md-sys-color-surface));
+}
+.m3-segment[aria-checked="true"]:hover {
+	background: color-mix(in srgb, var(--md-sys-color-on-secondary-container) 8%, var(--md-sys-color-secondary-container));
+}
+.m3-segment:focus-visible {
+	outline: 2px solid var(--md-sys-color-secondary);
+	outline-offset: -3px;
+}
+
+/* --- the "playing" morph on the speed dial ------------------------------- */
+/* Material's expressive slider does not fade a wave in on top of the track: the
+   track itself ripples. A range input cannot reshape its own track, so the rate
+   dial draws its whole track on one canvas path instead - the native track is
+   made transparent - and that path is what morphs:
+     idle    amplitude 0        -> a plain 4dp line, indistinguishable from M3
+     playing amplitude -> 2.6   -> the line ripples into a travelling wave
+   Because there is exactly one path, the two states can never be visible at the
+   same time (the old design layered a wave over the native bar and its mask
+   left a straight sliver of the bar showing through).
+   `html[data-bands]` is written by rimlight-lab.js from the scene (is a light
+   band painted?), never from a button's pressed state. */
+/* line-height:0 kills the inline baseline gap, otherwise the wrap is a few px
+   taller than the 44dp input and "top: 50%" would draw the track below centre. */
+.m3-slider-wrap { position: relative; display: block; line-height: 0; }
+.m3-slider-canvas {
+	position: absolute;
+	left: 10px;
+	right: 10px;
+	top: 50%;
+	height: 12px;
+	margin-top: -6px;
+	display: block;
+	overflow: visible;
+	pointer-events: none;
+	z-index: 0;
+}
+.m3-slider-canvas__spare {
+	fill: none;
+	stroke: var(--md-sys-color-secondary-container);
+	stroke-width: 4;
+	stroke-linecap: round;
+}
+.m3-slider-canvas__active {
+	fill: none;
+	stroke: var(--md-sys-color-primary);
+	stroke-width: 4;
+	stroke-linecap: round;
+}
+/* The path is the track now, so the input's own must not paint anything - and
+   it has to sit above the canvas so the handle still catches the pointer. */
+.m3-slider-wrap .m3-slider { position: relative; z-index: 1; }
+.m3-slider--rate::-webkit-slider-runnable-track { background: transparent; }
+.m3-slider--rate::-moz-range-track { background: transparent; }
+.m3-slider--rate::-moz-range-progress { background: transparent; }
+/* A range thumb is a form-control pseudo-element, and Chromium/Firefox do not
+   run CSS animations on those, so "breathing" the handle is not possible. What
+   does work is the persistent state layer Material draws under an active
+   handle; it reads as "this dial is live" without moving. */
+html[data-bands="1"] .m3-slider--rate::-webkit-slider-thumb {
+	box-shadow: 0 0 0 6px color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+}
+html[data-bands="1"] .m3-slider--rate::-moz-range-thumb {
+	box-shadow: 0 0 0 6px color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+}
+html[data-bands="1"] .m3-slider-value--rate { color: var(--md-sys-color-primary); }
+/* Under reduced motion the dial keeps the morph (it signals state, it is not
+   decoration) but stops travelling; the script freezes the phase instead of
+   dropping the wave, so "is it playing?" stays readable. */
+
+/* --- outlined text field (used for the selects) ------------------------ */
+.m3-field { position: relative; display: block; --m3-field-bg: var(--md-sys-color-surface); }
+.m3-field select {
+	width: 100%;
+	height: 56px;
+	padding: 0 48px 0 16px;
+	border-radius: var(--md-sys-shape-corner-extra-small);
+	border: 1px solid var(--md-sys-color-outline);
+	background: transparent;
+	color: var(--md-sys-color-on-surface);
+	font-family: var(--md-ref-typeface-plain);
+	font-size: var(--md-sys-typescale-body-large-size);
+	line-height: var(--md-sys-typescale-body-large-line-height);
+	letter-spacing: var(--md-sys-typescale-body-large-tracking);
+	appearance: none;
+	-webkit-appearance: none;
+	cursor: pointer;
+	transition: border-color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.m3-field select:hover { border-color: var(--md-sys-color-on-surface); }
+.m3-field select:focus-visible {
+	outline: none;
+	border-color: var(--md-sys-color-primary);
+	box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
+}
+.m3-field select option {
+	background: var(--md-sys-color-surface-container-high);
+	color: var(--md-sys-color-on-surface);
+}
+.m3-field__label {
+	position: absolute;
+	top: -8px; left: 12px;
+	padding: 0 4px;
+	background: var(--m3-field-bg);
+	color: var(--md-sys-color-on-surface-variant);
+	pointer-events: none;
+}
+.m3-field__chevron {
+	position: absolute;
+	right: 16px; top: 50%;
+	transform: translateY(-50%);
+	width: 20px; height: 20px;
+	color: var(--md-sys-color-on-surface-variant);
+	pointer-events: none;
+}
+
+/* --- per-band palette rows (created by rimlight-lab.js) ---------------- */
+.m3-band-rows { display: flex; flex-direction: column; gap: 12px; }
+.m3-band-rows .brow { display: flex; align-items: center; gap: 12px; }
+.m3-band-rows .brow span {
+	flex: 0 0 56px;
+	color: var(--md-sys-color-on-surface-variant);
+	font-size: var(--md-sys-typescale-label-medium-size);
+	line-height: var(--md-sys-typescale-label-medium-line-height);
+	font-weight: var(--md-sys-typescale-label-medium-weight);
+}
+.m3-band-rows .brow select {
+	flex: 1 1 auto;
+	height: 44px;
+	padding: 0 40px 0 12px;
+	border-radius: var(--md-sys-shape-corner-extra-small);
+	border: 1px solid var(--md-sys-color-outline);
+	background: transparent;
+	color: var(--md-sys-color-on-surface);
+	font-family: var(--md-ref-typeface-plain);
+	font-size: var(--md-sys-typescale-body-medium-size);
+	appearance: none;
+	-webkit-appearance: none;
+	cursor: pointer;
+	background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+	background-position: calc(100% - 20px) 20px, calc(100% - 14px) 20px;
+	background-size: 6px 6px, 6px 6px;
+	background-repeat: no-repeat;
+}
+.m3-band-rows .brow select:focus-visible { outline: none; border-color: var(--md-sys-color-primary); box-shadow: inset 0 0 0 1px var(--md-sys-color-primary); }
+
+/* --- readout ----------------------------------------------------------- */
+.m3-readout {
+	margin: 0;
+	color: var(--md-sys-color-on-surface-variant);
+	font-family: var(--md-ref-typeface-mono);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* Reduced motion (and `?motion=off`, used by headless captures): transitions
+   freeze under virtual time, which would leave the preview window on the
+   previous theme's colours. */
+html.no-motion *, html.no-motion *::before, html.no-motion *::after {
+	transition: none !important;
+	animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+	*, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}
+
+/* ===================================================================
+   3. Page layout
+   =================================================================== */
+#lab {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 384px;
+	gap: 16px;
+	padding: 16px;
+}
+#stage {
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+	border-radius: var(--md-sys-shape-corner-large);
+	/* surface tint: the preview area carries a hint of the model's primary */
+	background: color-mix(in srgb, var(--md-sys-color-primary) 7%, var(--md-sys-color-surface-container-low));
+}
+#panel {
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	overflow: hidden;
+}
+/* The cards scroll; the actions do not, so "开始思考" is always one tap away. */
+#panel-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding-right: 4px;
+	scrollbar-width: thin;
+	scrollbar-color: var(--md-sys-color-outline-variant) transparent;
+}
+#panel-body::-webkit-scrollbar { width: 8px; }
+#panel-body::-webkit-scrollbar-thumb { background: var(--md-sys-color-outline-variant); border-radius: 4px; }
+#panel-body::-webkit-scrollbar-track { background: transparent; }
+/* Desktop keeps the actions at the top of the panel; the portrait layout moves
+   them to the bottom (see the mobile block below). */
+#panel-actions {
+	flex: 0 0 auto;
+	order: -1;
+	padding-bottom: 2px;
+}
+
+.m3-btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.m3-btn-row .m3-button { flex: 0 0 auto; }
+
+#footer {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 20px 12px;
+	color: var(--md-sys-color-on-surface-variant);
+}
+#footer a {
+	color: var(--md-sys-color-primary);
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border-radius: var(--md-sys-shape-corner-extra-small);
+}
+#footer a:hover { text-decoration: underline; }
+#footer .sep { opacity: 0.6; }
+
+
+
+
+/* ===================================================================
+   3b. Portrait / mobile layout
+   -------------------------------------------------------------------
+   Same DOM, different arrangement: the preview window owns the top of the
+   screen and every control lives in a bottom sheet, actions pinned above the
+   safe-area inset. `html[data-layout=mobile]` is set by the UA probe; the
+   media query also catches a narrow desktop window so the page never needs a
+   second copy.
+   =================================================================== */
+html[data-layout="mobile"] body { height: 100vh; }
+html.has-dvh[data-layout="mobile"] body { height: 100dvh; }
+
+html[data-layout="mobile"] #lab {
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr) auto;
+	gap: 8px;
+	padding: 8px;
+}
+html[data-layout="mobile"] #stage {
+	padding: 8px;
+	border-radius: var(--md-sys-shape-corner-medium);
+}
+html[data-layout="mobile"] #panel {
+	max-height: 47vh;
+	gap: 8px;
+	padding: 0;
+	background: var(--md-sys-color-surface-container-low);
+	border-radius: var(--md-sys-shape-corner-large);
+}
+html[data-layout="mobile"] #panel-body {
+	padding: 10px 10px 0;
+	gap: 8px;
+}
+html[data-layout="mobile"] #panel-actions {
+	order: 0;                    /* bottom: after the scrolled cards */
+	position: sticky;
+	bottom: 0;
+	padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+	background: var(--md-sys-color-surface-container-low);
+	border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+html[data-layout="mobile"] .m3-btn-row {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 6px;
+}
+html[data-layout="mobile"] .m3-btn-row .m3-button {
+	min-height: 48px;
+	/* English labels are longer than the Chinese ones, and a fixed 4-column bar
+	   clipped them ("Reborn at corne"). Let the label take a second line and the
+	   row grow instead: same cells, readable copy. */
+	height: auto;
+	padding: 6px 4px;
+	font-size: var(--md-sys-typescale-label-medium-size);
+	line-height: 1.2;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	text-align: center;
+}
+/* One line of subtitle on a phone: the header is chrome, the band is the
+   subject. */
+html[data-layout="mobile"] .m3-app-bar__title p {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+html[data-layout="mobile"] .m3-card { padding: 12px; }
+html[data-layout="mobile"] .m3-card__title { margin-bottom: 8px; }
+html[data-layout="mobile"] .m3-slider { height: 48px; }
+html[data-layout="mobile"] .m3-switch { width: 52px; height: 32px; }
+html[data-layout="mobile"] .m3-switch-row { min-height: 56px; }
+/* The proxy window keeps its frame but drops the sidebar: on a phone the band
+   is what matters, and a 208px rail would leave nothing to look at. */
+html[data-layout="mobile"] #frame .sidebar { display: none; }
+html[data-layout="mobile"] #frame .convo { left: 0; padding: 14px 16px 88px; }
+html[data-layout="mobile"] #frame .titlebar { font-size: 11px; padding: 0 10px; }
+html[data-layout="mobile"] #frame .wincontrols { right: 4px; gap: 2px; }
+html[data-layout="mobile"] #frame .wincontrols i { width: 28px; height: 26px; border-radius: 7px; }
+html[data-layout="mobile"] #frame .composer { left: 10px; right: 10px; }
+html[data-layout="mobile"] #footer {
+	padding: 0 12px calc(8px + env(safe-area-inset-bottom));
+	flex-wrap: wrap;
+}
+/* Phones held sideways: the controls become a column beside the preview. */
+@media (orientation: landscape) and (max-height: 560px) {
+	html[data-layout="mobile"] #lab {
+		grid-template-columns: minmax(0, 1fr) 46%;
+		grid-template-rows: minmax(0, 1fr);
+	}
+	/* The sheet is the whole column here, so the 47vh cap would squeeze the
+	   cards out; the body scrolls and the actions stay at the bottom. */
+	html[data-layout="mobile"] #panel { max-height: 100%; }
+	html[data-layout="mobile"] #panel-actions { position: static; }
+	html[data-layout="mobile"] .m3-btn-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+	html[data-layout="mobile"] .m3-btn-row .m3-button { min-height: 44px; }
+	html[data-layout="mobile"] #footer { display: none; }
+}
+
+/* ===================================================================
+   4. The mock client window (product preview - unchanged)
+   =================================================================== */
 	/* ---------------- the mock app window (stays dark: the band lives on it) ---------------- */
 	/* ---------------- the mock app window (theme aware) ---------------- */
 	#frame {
 		position: relative;
 		width: 100%; height: 100%; max-width: 1180px;
 		border-radius: 22px;
+		/* No backdrop-filter: the mock window is opaque and now sits on a flat
+		   M3 surface, and the blur made headless captures render it grey. */
 		background: var(--fr-bg);
-		-webkit-backdrop-filter: blur(22px) saturate(140%);
-		backdrop-filter: blur(22px) saturate(140%);
 		border: 1px solid var(--frame-border);
 		box-shadow: var(--frame-shadow);
 		overflow: hidden;
@@ -399,31 +1180,33 @@
 		transition: background 320ms ease, color 240ms ease, border-color 320ms ease, box-shadow 320ms ease;
 	}
 	/* send key: a blue glass bead rather than a flat gradient */
+	/* Send button as a Material 3 filled icon button: 40dp, full radius,
+	   primary container, on-primary glyph, state layer instead of a glass
+	   sheen. It reads the scheme, so it follows the selected model too. */
 	#frame #send {
 		position: relative; overflow: hidden;
-		margin-left: auto; width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; color: #fff; font-size: 15px;
+		margin-left: auto; width: 40px; height: 40px; border-radius: var(--md-sys-shape-corner-full); flex: 0 0 auto;
 		display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none;
-		background: linear-gradient(158deg, rgba(150,182,255,0.66), rgba(77,107,254,0.42) 52%, rgba(126,164,255,0.56));
-		-webkit-backdrop-filter: blur(8px) saturate(185%);
-		backdrop-filter: blur(8px) saturate(185%);
-		border: 1px solid rgba(255,255,255,0.55);
-		box-shadow:
-			0 1px 0 rgba(255,255,255,0.80) inset,
-			0 -1px 0 rgba(48,78,190,0.40) inset,
-			0 7px 18px rgba(77,107,254,0.38),
-			0 0 18px rgba(110,150,255,0.35);
-		transition: transform 140ms ease, box-shadow 180ms ease, background 320ms ease;
+		background: var(--md-sys-color-primary);
+		color: var(--md-sys-color-on-primary);
+		border: none;
+		box-shadow: 0 1px 2px 0 rgba(0,0,0,.30), 0 1px 3px 1px rgba(0,0,0,.15);
+		transition: transform 200ms cubic-bezier(0.2, 0, 0, 1),
+		            box-shadow 200ms cubic-bezier(0.2, 0, 0, 1),
+		            background-color 400ms cubic-bezier(0.2, 0, 0, 1),
+		            color 400ms cubic-bezier(0.2, 0, 0, 1);
 	}
+	#frame #send svg { width: 20px; height: 20px; display: block; position: relative; z-index: 1; }
 	#frame #send::before {
-		content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
-		background:
-			radial-gradient(120% 92% at 30% 18%, rgba(255,255,255,0.72), rgba(255,255,255,0) 58%),
-			radial-gradient(90% 70% at 74% 108%, rgba(140,180,255,0.55), rgba(255,255,255,0) 62%);
-		mix-blend-mode: screen;
+		content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+		background: currentColor; opacity: 0;
+		transition: opacity 200ms cubic-bezier(0.2, 0, 0, 1);
 	}
-	#frame #send:hover { transform: translateY(-1px); box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 -1px 0 rgba(48,78,190,0.42) inset, 0 10px 22px rgba(77,107,254,0.45), 0 0 26px rgba(120,160,255,0.45); }
-	#frame #send:active { transform: translateY(1px) scale(0.985); }
-	html[data-theme="light"] #frame #send { color: #f4f8ff; }
+	#frame #send:hover::before { opacity: var(--md-sys-state-hover-state-layer-opacity); }
+	#frame #send:hover { box-shadow: 0 2px 6px 2px rgba(0,0,0,.15), 0 1px 2px 0 rgba(0,0,0,.30); }
+	#frame #send:active { transform: scale(0.96); }
+	#frame #send:active::before { opacity: var(--md-sys-state-pressed-state-layer-opacity); }
+	html[data-theme="light"] #frame #send { color: var(--md-sys-color-on-primary); }
 	#frame #ask { flex: 1 1 auto; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--fr-ink); font: 15px/1.45 inherit; }
 	#frame #ask::placeholder { color: var(--fr-placeholder); }
 	#frame .bubble .glass-word { display: inline; padding: 0; margin: 0 1px; border: 0; border-radius: 0; background: none; font-weight: 600; letter-spacing: 0.02em; vertical-align: baseline; }
@@ -431,308 +1214,729 @@
 	#frame .bubble .glass-word.cool { color: #7ef0a8; text-shadow: 0 0 1px rgba(120,255,180,0.9), 0 0 10px rgba(52,214,132,0.8), 0 0 20px rgba(20,180,110,0.5); }
 	html[data-theme="light"] #frame .bubble .glass-word.warm { color: #d1373f; text-shadow: 0 0 8px rgba(255,90,100,0.35); }
 	html[data-theme="light"] #frame .bubble .glass-word.cool { color: #128a4f; text-shadow: 0 0 8px rgba(60,200,130,0.30); }
-	#overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+	#overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; contain: layout paint style; }
 
-	/* ---------------- control panel ---------------- */
-	#panel {
-		position: relative;
-		width: 330px; flex: 0 0 330px; padding: 16px; overflow-y: auto; z-index: 1;
-		background: var(--panel-fill);
-		-webkit-backdrop-filter: blur(30px) saturate(185%);
-		backdrop-filter: blur(30px) saturate(185%);
-		border-left: 1px solid var(--panel-border);
-		box-shadow: var(--panel-shadow);
-		scrollbar-width: thin;
-		scrollbar-color: var(--scroll-thumb) transparent;
-		transition: background 320ms ease, border-color 320ms ease;
-	}
-	#panel::-webkit-scrollbar { width: 9px; }
-	#panel::before {
-		content: "";
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		background: var(--panel-sheen);
-	}
-	#panel::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 9px; border: 2px solid transparent; background-clip: content-box; }
-	#panel h1 { font-size: 12px; margin: 0 44px 14px 0; letter-spacing: 0.16em; color: var(--hd-ink); font-weight: 700; display: flex; align-items: center; gap: 8px; }
-	#panel h1::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, #6f9dff); box-shadow: 0 0 14px rgba(111,157,255,0.85); }
 
-	#panel .grp {
-		margin-bottom: 14px; padding: 12px 13px; border-radius: 16px;
-		background: var(--card-fill);
-		-webkit-backdrop-filter: blur(10px) saturate(160%);
-		backdrop-filter: blur(10px) saturate(160%);
-		border: 1px solid var(--card-border);
-		box-shadow: var(--card-shadow);
-		transition: background 320ms ease, border-color 320ms ease, box-shadow 320ms ease;
-	}
-	#panel .grp > label { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--label-ink); margin-bottom: 9px; letter-spacing: 0.05em; font-weight: 600; }
+</style>
+<style>
+/* ===================================================================
+   5. Preview window theme variables (unchanged from the shipped lab)
+   =================================================================== */
+html[data-theme="dark"] {
+		--fr-blur: 12px;
+		--fr-sat: 190%;
+		--frame-shadow: 0 34px 80px rgba(0,0,0,0.62), 0 10px 26px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.08) inset, 0 0 0 1px rgba(255,255,255,0.05);
+		--frame-border: rgba(255,255,255,0.10);
+		--fr-bg: #151517;
+		--fr-sidebar: #1b1b1c;
+		--fr-titlebar: linear-gradient(180deg, #1d1d1f, #191a1b);
+		--fr-rule: rgba(255,255,255,0.07);
+		--fr-ink: #d7d9dd;
+		--fr-ink-strong: #e9ebef;
+		--fr-title-ink: #c3c6cc;
+		--fr-ctl-ink: #c8cbd1;
+		--fr-ctl-bg: rgba(255,255,255,0.06);
+		--fr-ctl-border: rgba(255,255,255,0.09);
+		--fr-row: rgba(255,255,255,0.055);
+		--fr-row-border: rgba(255,255,255,0.06);
+		--fr-row-sel: linear-gradient(160deg, rgba(122,158,255,0.24), rgba(122,158,255,0.08));
+		--fr-row-sel-border: rgba(140,175,255,0.34);
+		--fr-row-sel-glow: 0 0 16px rgba(96,140,255,0.18), 0 1px 0 rgba(255,255,255,0.10) inset;
+		--fr-bubble: linear-gradient(158deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02));
+		--fr-bubble-border: rgba(255,255,255,0.075);
+		--fr-bubble-shadow: 0 1px 0 rgba(255,255,255,0.05) inset;
+		--fr-bubble-user: linear-gradient(158deg, rgba(122,158,255,0.22), rgba(122,158,255,0.07));
+		--fr-bubble-user-border: rgba(140,175,255,0.26);
+		--fr-answer: linear-gradient(158deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+		--fr-answer-border: rgba(255,255,255,0.08);
+		--fr-answer-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 12px 30px rgba(0,0,0,0.28);
+		--fr-line-a: rgba(233,235,239,0.55);
+		--fr-line-b: rgba(233,235,239,0.22);
+		--fr-composer: linear-gradient(158deg, rgba(255,255,255,0.075), rgba(255,255,255,0.02));
+		--fr-composer-border: rgba(255,255,255,0.11);
+		--fr-composer-shadow: 0 1px 0 rgba(255,255,255,0.10) inset, 0 18px 40px rgba(0,0,0,0.40);
+		--fr-placeholder: #8b8f97;
+		--fr-sheen-1: rgba(255,255,255,0.07);
+		--fr-sheen-2: rgba(120,200,255,0.06);
+		--fr-sheen-op: 0.5;
+		--fr-dot-glow: rgba(255,255,255,0.35);
+}
 
-	/* buttons: glass chips with a bevel rim that catches the light */
-	#panel button {
-		appearance: none; position: relative; overflow: hidden; cursor: pointer;
-		color: var(--btn-ink); font-size: 12px; font-weight: 500; padding: 8px 12px; margin: 0 6px 7px 0; border-radius: 12px;
-		border: 1px solid var(--btn-border);
-		background: var(--btn-fill);
-		-webkit-backdrop-filter: blur(12px) saturate(170%);
-		backdrop-filter: blur(12px) saturate(170%);
-		box-shadow: var(--btn-shadow);
-		transition: transform 130ms ease, box-shadow 170ms ease, background 170ms ease, color 170ms ease;
-	}
-	#panel button::after {
-		content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-		background: var(--btn-sheen);
-		opacity: 0.55; transition: opacity 170ms ease;
-	}
-	#panel button:hover {
-		background: var(--btn-hover-fill);
-		transform: translateY(-1px);
-	}
-	#panel button:hover::after { opacity: 0.85; }
-	#panel button:active { transform: translateY(1px) scale(0.994); }
-	#panel button.primary {
-		color: var(--primary-ink);
-		border-color: var(--primary-border);
-		background: var(--primary-fill);
-		box-shadow: var(--primary-shadow);
-	}
-	#panel button.primary:hover { background: var(--primary-hover); }
+html[data-theme="light"] {
+		--frame-shadow: 0 30px 70px rgba(30,55,110,0.20), 0 8px 20px rgba(30,55,110,0.12), 0 0 0 1px rgba(20,20,24,0.05);
+		--frame-border: rgba(20,20,24,0.10);
+		--fr-bg: #ffffff;
+		--fr-sidebar: #f9fafb;
+		--fr-titlebar: linear-gradient(180deg, #fbfbfc, #f4f4f6);
+		--fr-rule: rgba(20,20,24,0.08);
+		--fr-ink: #24262b;
+		--fr-ink-strong: #15161a;
+		--fr-title-ink: #4b4f57;
+		--fr-ctl-ink: #4b4f57;
+		--fr-ctl-bg: rgba(20,20,24,0.035);
+		--fr-ctl-border: rgba(20,20,24,0.07);
+		--fr-row: rgba(20,20,24,0.035);
+		--fr-row-border: rgba(20,20,24,0.05);
+		--fr-row-sel: linear-gradient(160deg, rgba(122,158,255,0.20), rgba(122,158,255,0.07));
+		--fr-row-sel-border: rgba(110,150,240,0.35);
+		--fr-row-sel-glow: 0 0 14px rgba(96,140,255,0.14), 0 1px 0 rgba(255,255,255,0.9) inset;
+		--fr-bubble: linear-gradient(158deg, rgba(20,20,24,0.035), rgba(20,20,24,0.015));
+		--fr-bubble-border: rgba(20,20,24,0.07);
+		--fr-bubble-shadow: 0 1px 0 rgba(255,255,255,0.9) inset;
+		--fr-bubble-user: linear-gradient(158deg, rgba(77,107,254,0.14), rgba(77,107,254,0.06));
+		--fr-bubble-user-border: rgba(77,107,254,0.22);
+		--fr-answer: linear-gradient(158deg, rgba(20,20,24,0.03), rgba(20,20,24,0.012));
+		--fr-answer-border: rgba(20,20,24,0.07);
+		--fr-answer-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 10px 26px rgba(30,40,70,0.10);
+		--fr-line-a: rgba(21,22,26,0.42);
+		--fr-line-b: rgba(21,22,26,0.16);
+		--fr-composer: linear-gradient(158deg, #ffffff, #f6f8fb);
+		--fr-composer-border: rgba(20,20,24,0.10);
+		--fr-composer-shadow: 0 1px 0 rgba(255,255,255,1) inset, 0 14px 34px rgba(30,45,80,0.14);
+		--fr-placeholder: #8d9199;
+		--fr-sheen-1: rgba(255,255,255,0.90);
+		--fr-sheen-2: rgba(150,200,255,0.25);
+		--fr-sheen-op: 0.35;
+		--fr-dot-glow: rgba(120,150,255,0.55);
+}
 
-	/* sliders: glass groove, lens-like thumb */
-	#panel input[type=range] { width: 100%; height: 22px; appearance: none; background: transparent; }
-	#panel input[type=range]::-webkit-slider-runnable-track {
-		height: 8px; border-radius: 999px;
-		background: var(--track-fill);
-		border: 1px solid var(--track-border);
-		box-shadow: 0 1px 0 rgba(255,255,255,0.55) inset, 0 1px 3px rgba(20,50,100,0.22) inset;
-	}
-	#panel input[type=range]::-webkit-slider-thumb {
-		appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%;
-		background: var(--thumb-fill);
-		border: 1px solid rgba(255,255,255,0.9);
-		box-shadow: var(--thumb-shadow);
-	}
-
-	#panel input[type=range]::-moz-range-track {
-		height: 8px; border-radius: 999px;
-		background: var(--track-fill);
-		border: 1px solid var(--track-border);
-		box-shadow: 0 1px 0 rgba(255,255,255,0.55) inset, 0 1px 3px rgba(20,50,100,0.22) inset;
-	}
-	#panel input[type=range]::-moz-range-thumb {
-		width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.9);
-		background: var(--thumb-fill);
-		box-shadow: var(--thumb-shadow);
-	}
-
-	#panel select {
-		width: 100%; padding: 9px 11px; border-radius: 12px; color: var(--select-ink); font-weight: 500;
-		border: 1px solid var(--btn-border);
-		background: var(--select-fill);
-		-webkit-backdrop-filter: blur(12px) saturate(170%);
-		backdrop-filter: blur(12px) saturate(170%);
-		box-shadow: var(--btn-shadow);
-		outline: none;
-		transition: background 320ms ease, color 240ms ease;
-	}
-	#panel select option { color: var(--option-ink); background: var(--option-bg); }
-	#panel .val { color: var(--val-ink); font-variant-numeric: tabular-nums; font-weight: 700; }
-	#panel .hint { font-size: 11px; color: var(--hint-ink); margin-top: 8px; line-height: 1.5; }
-
-	/* switch: the knob is a background layer, because Gecko ignores ::after on inputs */
-	#panel .chk { display: flex; align-items: center; gap: 9px; margin: 8px 0; font-size: 12px; color: var(--ink-soft); }
-	#panel .chk input {
-		appearance: none; -webkit-appearance: none;
-		width: 38px; height: 21px; border-radius: 999px; cursor: pointer; margin: 0; flex: 0 0 auto;
-		border: 1px solid var(--chk-border);
-		background-image: var(--chk-thumb), var(--chk-fill);
-		background-size: 15px 15px, 100% 100%;
-		background-position: 2px 50%, 0 0;
-		background-repeat: no-repeat, no-repeat;
-		box-shadow: 0 1px 3px rgba(20,50,100,0.24) inset, 0 1px 0 rgba(255,255,255,0.55);
-		transition: background-position 200ms cubic-bezier(0.34, 1.3, 0.64, 1), box-shadow 180ms ease;
-	}
-	#panel .chk input:checked {
-		background-image: var(--chk-thumb), var(--chk-on);
-		background-position: calc(100% - 2px) 50%, 0 0;
-		box-shadow: 0 1px 4px rgba(20,60,140,0.35) inset, 0 0 12px rgba(110,165,245,0.55);
-	}
-
-	#readout {
-		font: 11px/1.55 ui-monospace, "Cascadia Code", Consolas, monospace; color: var(--readout-ink); white-space: pre-wrap; margin: 0;
-		padding: 10px 11px; border-radius: 12px;
-		background: var(--readout-fill);
-		-webkit-backdrop-filter: blur(8px) saturate(150%);
-		backdrop-filter: blur(8px) saturate(150%);
-		border: 1px solid var(--readout-border);
-		box-shadow: 0 1px 0 rgba(255,255,255,0.30) inset, 0 6px 16px rgba(20,50,110,0.14);
-		transition: background 320ms ease, color 240ms ease;
-	}
-
-	#lab { flex: 1 1 auto; display: flex; min-height: 0; z-index: 1; }
-
-	#footer {
-		flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px;
-		padding: 9px 16px 13px; font-size: 12px; color: var(--footer-ink); letter-spacing: 0.01em;
-		border-top: 1px solid var(--footer-border);
-		background: var(--footer-bg);
-		-webkit-backdrop-filter: blur(18px) saturate(160%);
-		backdrop-filter: blur(18px) saturate(160%);
-		z-index: 2;
-		transition: background 320ms ease, color 240ms ease, border-color 320ms ease;
-	}
-	#footer a {
-		display: inline-flex; align-items: center; gap: 6px; color: var(--footer-link); text-decoration: none;
-		padding: 4px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0);
-		transition: color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-	}
-	#footer a:hover {
-		color: var(--footer-link-hover); border-color: var(--btn-border);
-		background: var(--btn-fill);
-		box-shadow: var(--btn-shadow);
-	}
-	#footer a svg { display: block; opacity: 0.85; }
-	#footer a:hover svg { opacity: 1; }
-	#footer .sep { color: var(--footer-sep); user-select: none; }
-	#footer .copy { color: var(--footer-copy); }
-
-	/* Liquid glass needs an SVG filter as a backdrop, which only Chromium-family
-	   engines can do. Every surface already has a plain frost above; the rules
-	   below upgrade them to real refraction when <html class="refract"> is set by
-	   the inline probe just inside <body>. Firefox / Safari keep the Gaussian
-	   blur instead of silently losing the glass. */
-	html.refract .lg { backdrop-filter: url(#lg-refract) blur(var(--fr-blur)) saturate(var(--fr-sat)); }
-	html.refract #panel { backdrop-filter: url(#lg-refract) blur(30px) saturate(185%); }
-	html.refract #panel .grp { backdrop-filter: url(#lg-refract) blur(10px) saturate(160%); }
-	html.refract #panel button,
-	html.refract #panel select,
-	html.refract #theme-toggle { backdrop-filter: url(#lg-refract) blur(12px) saturate(170%); }
-	html.refract #readout { backdrop-filter: url(#lg-refract) blur(8px) saturate(150%); }
-	html.refract #frame,
-	html.refract #frame .composer { backdrop-filter: url(#lg-refract) blur(22px) saturate(140%); }
-	html.refract #frame #send { backdrop-filter: url(#lg-refract) blur(8px) saturate(185%); }
-	html.refract #footer { backdrop-filter: url(#lg-refract) blur(18px) saturate(160%); }
-
-	@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-		.lg, #panel, #panel .grp, #panel button, #panel select, #readout { background-color: var(--fallback-bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
-	}
 </style>
 </head>
 <body>
 <script>
-// Liquid glass needs an SVG filter as a backdrop, which only Chromium-family
-// engines can do. Everything keeps its plain frost; this class upgrades the
-// surfaces to the real refraction where it works.
-(function () {
-	try {
-		var gecko = CSS.supports("-moz-appearance", "none");
-		var chromium = !gecko && (!!window.chrome || !!navigator.userAgentData) && CSS.supports("backdrop-filter", "blur(1px)");
-		if (chromium) document.documentElement.classList.add("refract");
-	} catch (e) {}
-})();
+	// `?motion=off` (or the OS "reduce motion" setting) disables the transitions.
+	(function () {
+		var off = false;
+		try { off = new URLSearchParams(location.search).get("motion") === "off"; } catch (e) { off = false; }
+		try { off = off || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) { /* noop */ }
+		if (off) document.documentElement.classList.add("no-motion");
+	})();
 </script>
-<button id="theme-toggle" type="button" aria-label="切换明暗模式" title="切换到明亮模式" aria-pressed="true">
-	<i>
-		<svg class="moon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6.2 1.6a6.6 6.6 0 1 0 8.2 8.2A6.9 6.9 0 0 1 6.2 1.6z"/></svg>
-		<svg class="sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.2" fill="currentColor"/><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3.05 3.05l1.13 1.13M11.82 11.82l1.13 1.13M12.95 3.05l-1.13 1.13M4.18 11.82l-1.13 1.13"/></g></svg>
-	</i>
-</button>
-<svg id="lg-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
-	<defs>
-		<!-- SDF displacement map: R/G carry the bend, blue the specular weight.
-		     Fed to feDisplacementMap so backdrop-filter: url(#lg-refract) wraps the
-		     page behind each glass surface at its contour (Chromium / Edge). -->
-		<filter id="lg-refract" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
-			<feImage href="data:image/png;base64,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" x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="map" />
-			<feDisplacementMap in="SourceGraphic" in2="map" scale="18" xChannelSelector="R" yChannelSelector="G" result="bent" />
-			<feGaussianBlur in="bent" stdDeviation="0.4" />
-		</filter>
-	</defs>
-</svg>
+<header class="m3-app-bar">
+	<span class="m3-app-bar__mark" aria-hidden="true">
+		<img class="mark-on-dark" src="../logo.svg" alt="">
+		<img class="mark-on-light" src="../logo-on-light.svg" alt="">
+	</span>
+	<div class="m3-app-bar__title">
+		<h1 class="md-typescale-title-large">Rimlight Lab</h1>
+		<p class="md-typescale-label-medium" data-i18n="app.subtitle">DeepSeek Harness · 光带主题调试台</p>
+	</div>
+	<div class="m3-app-bar__actions">
+		<button id="lang-toggle" class="m3-lang-toggle" type="button" aria-label="切换语言" title="切换语言">EN</button>
+		<button id="theme-toggle" class="m3-icon-button" type="button" aria-label="切换明暗模式" data-i18n-aria-label="theme.toggle" title="切换到明亮模式" aria-pressed="true">
+			<svg class="moon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+			<svg class="sun" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+		</button>
+	</div>
+	<!-- Brand signature: primary / secondary / tertiary of the derived scheme.
+	     Every palette now resolves to a single brand hue, so the three segments
+	     differ only in tone - except for Prism, where they are three greys. -->
+	<div class="m3-brand-strip" id="brand-strip" aria-hidden="true">
+		<span></span><span></span><span></span>
+	</div>
+</header>
 
-<div id="lab">
-<div id="stage">
-	<div id="frame">
-		<div class="titlebar"><span class="dot"></span>DeepSeek Harness · Rimlight 调试窗口</div>
-		<div class="wincontrols"><i>–</i><i>□</i><i>✕</i></div>
-		<div class="sidebar">
-			<div class="row" data-demo-row="bg1"></div>
-			<div class="row sel"></div>
-			<div class="row"></div>
-			<div class="row"></div>
-			<div class="row"></div>
+<main id="lab">
+	<section id="stage" aria-label="客户端窗口预览" data-i18n-aria-label="stage.aria">
+		<div id="frame">
+			<div class="titlebar"><span class="dot"></span><span data-i18n="stage.titlebar">DeepSeek Harness · Rimlight 调试窗口</span></div>
+			<div class="wincontrols"><i>–</i><i>□</i><i>✕</i></div>
+			<div class="sidebar">
+				<div class="row" data-demo-row="bg1"></div>
+				<div class="row sel"></div>
+				<div class="row"></div>
+				<div class="row"></div>
+				<div class="row"></div>
+			</div>
+			<div class="convo">
+				<!-- The easter-egg exchange ships in the markup so a cached script can
+				     never leave the area blank; rimlight-lab.js only repaints the badge
+				     from the local time (peak -> red 梁文峰, off-peak -> green 梁文谷). -->
+				<div class="bubble user" data-i18n="egg.question">现在是什么时段?</div>
+				<div class="bubble" id="egg-answer"><span data-i18n="egg.prefix">现在是</span><span class="glass-word cool" id="egg-word">梁文谷</span><span data-i18n="egg.suffix">时段。</span></div>
+			</div>
+			<div class="composer"><input id="ask" type="text" autocomplete="off" spellcheck="false" placeholder="继续输入…" data-i18n-placeholder="composer.placeholder"><div id="send" role="button" aria-label="发送" data-i18n-aria-label="composer.send"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></div></div>
+			<div id="overlay"></div>
 		</div>
-		<div class="convo">
-			<!-- The easter-egg exchange ships in the markup so a cached script can
-			     never leave the area blank; rimlight-lab.js only repaints the badge
-			     from the local time (peak -> red 梁文峰, off-peak -> green 梁文谷). -->
-			<div class="bubble user">现在是什么时段?</div>
-			<div class="bubble" id="egg-answer">现在是<span class="glass-word cool" id="egg-word">梁文谷</span>时段。</div>
+	</section>
+
+	<aside id="panel" aria-label="调试控制台" data-i18n-aria-label="panel.aria">
+		<div id="panel-body">
+		<section class="m3-card m3-card--outlined" aria-labelledby="m3-h-anim">
+			<h2 class="m3-card__title md-typescale-title-small" id="m3-h-anim" data-i18n="sec.anim">动画</h2>
+			
+			<p class="m3-support md-typescale-body-small" data-i18n="anim.support">这一版对应发布分支：光带只在左下角出生、尾巴从 0 长出；输出阶段沿边框绕圈，不再离开边框去绕答案。</p>
+		</section>
+
+		<section class="m3-card m3-card--outlined" aria-labelledby="m3-h-color">
+			<h2 class="m3-card__title md-typescale-title-small" id="m3-h-color" data-i18n="sec.color">配色</h2>
+			<div class="m3-field" id="theme-one">
+				<label class="m3-field__label md-typescale-body-small" for="theme" data-i18n="color.model">模型配色</label>
+				<select id="theme"></select>
+				<svg class="m3-field__chevron" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+			</div>
+			<div id="band-themes" hidden>
+				<div class="m3-fieldset">
+					<span class="m3-card__title md-typescale-title-small" data-i18n="color.perBand">各光带配色</span>
+					<div id="band-rows" class="m3-band-rows"></div>
+					<p class="m3-support md-typescale-body-small" data-i18n="color.perBandSupport">每条光带各挑一套配色；关掉「每条光带各自配色」会自动隐藏这一组，只剩上面的单色选择。</p>
+				</div>
+			</div>
+		</section>
+
+		<section class="m3-card m3-card--outlined" aria-labelledby="m3-h-show">
+			<h2 class="m3-card__title md-typescale-title-small" id="m3-h-show" data-i18n="sec.show">显示</h2>
+			<div class="m3-switch-row">
+				<span class="m3-switch-row__label md-typescale-body-large" data-i18n="show.glow">边缘泛光</span>
+				<label class="m3-switch">
+					<input type="checkbox" id="glow" checked>
+					<span class="m3-switch__track"></span>
+					<span class="m3-switch__thumb"></span>
+				</label>
+			</div>
+			<div class="m3-switch-row">
+				<span class="m3-switch-row__label md-typescale-body-large" data-i18n="show.multi">每条光带各自配色</span>
+				<label class="m3-switch">
+					<input type="checkbox" id="multi">
+					<span class="m3-switch__track"></span>
+					<span class="m3-switch__thumb"></span>
+				</label>
+			</div>
+			<div class="m3-switch-row">
+				<span class="m3-switch-row__label md-typescale-body-large" data-i18n="show.reply">等待回复（反向旋转）</span>
+				<label class="m3-switch">
+					<input type="checkbox" id="reply">
+					<span class="m3-switch__track"></span>
+					<span class="m3-switch__thumb"></span>
+				</label>
+			</div>
+		</section>
+
+		<section class="m3-card m3-card--outlined" aria-labelledby="m3-h-run">
+			<h2 class="m3-card__title md-typescale-title-small" id="m3-h-run" data-i18n="sec.run">运行参数</h2>
+			<div class="m3-slider-row">
+				<div class="m3-seg-head">
+					<span class="md-typescale-body-medium" id="count-label" data-i18n="run.count">正在运行的对话数</span>
+				</div>
+				<div class="m3-segmented" role="radiogroup" aria-labelledby="count-label">
+					<button type="button" class="m3-segment" role="radio" aria-checked="true" data-count="1">1</button>
+					<button type="button" class="m3-segment" role="radio" aria-checked="false" data-count="2">2</button>
+					<button type="button" class="m3-segment" role="radio" aria-checked="false" data-count="3">3</button>
+					<button type="button" class="m3-segment" role="radio" aria-checked="false" data-count="4">4</button>
+				</div>
+				<!-- The lab script reads this control as the single source of truth
+				     for the band count (URL params, reset, "再加一条"); the
+				     segmented buttons only write it. -->
+				<input type="range" id="count" min="1" max="4" step="1" value="1" hidden>
+				<span class="m3-slider-value md-typescale-label-large" id="v-count" hidden>1</span>
+				<p class="m3-support md-typescale-body-small" data-i18n="run.countSupport">最多 4 条，等距镜像；新带等自己的槽位走到角落附近才出现，所以多带首尾不会互相追。</p>
+			</div>
+			<div class="m3-slider-row">
+				<label class="m3-slider-label" for="speed">
+					<span class="md-typescale-body-medium" data-i18n="run.speed">速度倍率</span>
+					<span class="m3-slider-value m3-slider-value--rate md-typescale-label-large" id="v-speed">1.00</span>
+				</label>
+				<div class="m3-slider-wrap">
+					<!-- The rate dial's track is this path, not the input's own: that is
+					     what lets one shape morph between the straight M3 track and the
+					     playing wave instead of layering two tracks on top of each other. -->
+					<svg class="m3-slider-canvas" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+						<path class="m3-slider-canvas__spare" d=""></path>
+						<path class="m3-slider-canvas__active" d=""></path>
+					</svg>
+					<input class="m3-slider m3-slider--rate" type="range" id="speed" min="0.19" max="1.88" step="0.01" value="1">
+				</div>
+				<p class="m3-support md-typescale-body-small" data-i18n="run.speedSupport">改变一圈时长：1 是默认基准，0.19 最慢、1.88 最快（与插件设置里的「速度倍率」同义）。有光带运行时滑条会像播放中的进度条一样扭动。</p>
+			</div>
+			<div class="m3-slider-row">
+				<label class="m3-slider-label" for="sweep">
+					<span class="md-typescale-body-medium" data-i18n="run.sweep">扫掠幅度</span>
+					<span class="m3-slider-value md-typescale-label-large" id="v-sweep">0.62</span>
+				</label>
+				<input class="m3-slider" type="range" id="sweep" min="0" max="0.95" step="0.01" value="0.62">
+				<p class="m3-support md-typescale-body-small" data-i18n="run.sweepSupport">一圈之内的速度呼吸：0 匀速，0.62 默认（拐角慢、直边快），0.95 接近在拐角刹停。改动会在 200ms 内缓动生效。</p>
+			</div>
+			<div class="m3-slider-row">
+				<label class="m3-slider-label" for="trail">
+					<span class="md-typescale-body-medium" data-i18n="run.trail">拖尾长度</span>
+					<span class="m3-slider-value md-typescale-label-large" id="v-trail">320</span>
+				</label>
+				<input class="m3-slider" type="range" id="trail" min="40" max="1200" step="10" value="320">
+			</div>
+			<div class="m3-slider-row">
+				<label class="m3-slider-label" for="thick">
+					<span class="md-typescale-body-medium" data-i18n="run.thick">粗细</span>
+					<span class="m3-slider-value md-typescale-label-large" id="v-thick">6</span>
+				</label>
+				<input class="m3-slider" type="range" id="thick" min="2" max="24" step="1" value="6">
+			</div>
+		</section>
+
+		<section class="m3-card m3-card--filled" aria-labelledby="m3-h-read">
+			<h2 class="m3-card__title md-typescale-title-small" id="m3-h-read" data-i18n="sec.read">读数</h2>
+			<pre id="readout" class="m3-readout md-typescale-body-small">-</pre>
+		</section>
+			</div>
+
+		<div id="panel-actions" role="group" aria-label="动画控制" data-i18n-aria-label="actions.aria">
+<div class="m3-btn-row">
+				<button id="btn-think" class="m3-button m3-button--filled" data-i18n="btn.think">开始思考</button>
+				<button id="btn-entry" class="m3-button m3-button--outlined" data-i18n="btn.entry">角落重生</button>
+				<button id="btn-more" class="m3-button m3-button--tonal" data-i18n="btn.more">再加一条</button>
+				<button id="btn-finish" class="m3-button m3-button--outlined" data-i18n="btn.finish">输出完成</button>
+				<button id="btn-stop" class="m3-button m3-button--outlined" data-i18n="btn.stop">手动中断</button>
+				<button id="btn-bg" class="m3-button m3-button--outlined" data-i18n="btn.bg">后台结束</button>
+				<button id="btn-reset" class="m3-button m3-button--text" data-i18n="btn.reset">重置</button>
+			</div>
 		</div>
-		<div class="composer"><input id="ask" type="text" autocomplete="off" spellcheck="false" placeholder="继续输入…"><div id="send">↑</div></div>
-		<div id="overlay"></div>
-	</div>
-</div>
-<div id="panel">
-	<h1>RIMLIGHT LAB</h1>
-	<div class="grp">
-		<label>动画</label>
-		<button id="btn-think" class="primary">开始思考</button>
-		<button id="btn-entry">角落重生</button>
-		<button id="btn-more">再加一条</button>
-		<button id="btn-finish">输出完成</button>
-		<button id="btn-stop">手动中断</button>
-		<button id="btn-bg">后台结束</button>
-		<button id="btn-reset">重置</button>
-		<div class="hint">这一版对应发布分支：光带只在左下角出生、尾巴从 0 长出；输出阶段沿边框绕圈，不再离开边框去绕答案。</div>
-	</div>
-	<div class="grp">
-		<label>正在运行的对话数 <span class="val" id="v-count">1</span></label>
-		<input type="range" id="count" min="1" max="4" step="1" value="1">
-		<div class="hint">最多 4 条，等距镜像；新带等自己的槽位走到角落附近才出现，所以多带首尾不会互相追。</div>
-	</div>
-	<div class="grp">
-		<label>速度倍率 <span class="val" id="v-speed">1.60</span></label>
-		<input type="range" id="speed" min="0.3" max="3" step="0.05" value="1.6">
-		<div class="hint">改变一圈时长（与插件设置里的「速度倍率」同义）。</div>
-	</div>
-	<div class="grp">
-		<label>扫掠幅度 <span class="val" id="v-sweep">0.62</span></label>
-		<input type="range" id="sweep" min="0" max="0.95" step="0.01" value="0.62">
-		<div class="hint">一圈之内的速度呼吸：0 匀速，0.62 默认（拐角慢、直边快），0.95 接近在拐角刹停。改动会在 200ms 内缓动生效。</div>
-	</div>
-	<div class="grp">
-		<label>拖尾长度 <span class="val" id="v-trail">320</span></label>
-		<input type="range" id="trail" min="40" max="1200" step="10" value="320">
-	</div>
-	<div class="grp">
-		<label>粗细 <span class="val" id="v-thick">6</span></label>
-		<input type="range" id="thick" min="2" max="24" step="1" value="6">
-	</div>
-	<div class="grp">
-		<label>模型配色</label>
-		<select id="theme"></select>
-		<div class="chk"><input type="checkbox" id="glow" checked><span>边缘泛光</span></div>
-		<div class="chk"><input type="checkbox" id="multi"><span>每条光带各自配色</span></div>
-		<div class="chk"><input type="checkbox" id="reply"><span>等待回复（反向旋转）</span></div>
-	</div>
-	<div class="grp">
-		<label>读数</label>
-		<div id="readout">-</div>
-	</div>
-</div>
-</div>
-<footer id="footer" class="lg">
+	</aside>
+</main>
+
+<footer id="footer" class="md-typescale-body-small">
 	<a href="https://github.com/NanQing233/dsh-rimlight" target="_blank" rel="noopener noreferrer" title="GitHub · NanQing233/dsh-rimlight" aria-label="GitHub repository">
 		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
 		<span>GitHub</span>
 	</a>
 	<span class="sep">·</span>
-	<span class="copy">© 2026 南清</span>
+	<span class="copy" data-i18n="footer.copy">© 2026 南清</span>
 	<span class="sep">·</span>
-	<a href="https://github.com/NanQing233/dsh-rimlight/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" title="MPL-2.0 许可证全文">MPL-2.0 许可</a>
+	<a href="https://github.com/NanQing233/dsh-rimlight/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" title="MPL-2.0 许可证全文" data-i18n-title="footer.licenseTitle"><span data-i18n="footer.license">MPL-2.0 许可</span></a>
 </footer>
+
+<script>
+	// ---------------------------------------------------------------------
+	// Language layer.
+	//
+	// The lab is the public demo, so it speaks Chinese and English. Every static
+	// string in the markup carries a `data-i18n*` key; strings the scripts build
+	// themselves (band rows, the easter egg) read `__LAB_I18N__.t()` and repaint
+	// on the `lab-lang` event.
+	//
+	// Precedence: `?lang=zh|en`, then the stored choice, then the browser.
+	// ---------------------------------------------------------------------
+	(function () {
+		var STORE = "rimlight-lab-lang";
+		var DICT = {
+			zh: {
+				"page.title": "Rimlight · 调试台",
+				"app.subtitle": "DeepSeek Harness · 光带主题调试台",
+				"theme.toggle": "切换明暗模式",
+				"theme.toLight": "切换到明亮模式",
+				"theme.toDark": "切换到黑暗模式",
+				"stage.aria": "客户端窗口预览",
+				"stage.titlebar": "DeepSeek Harness · Rimlight 调试窗口",
+				"egg.question": "现在是什么时段?",
+				"egg.prefix": "现在是",
+				"egg.suffix": "时段。",
+				"egg.peak": "梁文峰",
+				"egg.off": "梁文谷",
+				"composer.placeholder": "继续输入…",
+				"composer.send": "发送",
+				"panel.aria": "调试控制台",
+				"sec.anim": "动画",
+				"anim.support": "这一版对应发布分支：光带只在左下角出生、尾巴从 0 长出；输出阶段沿边框绕圈，不再离开边框去绕答案。",
+				"sec.color": "配色",
+				"color.model": "模型配色",
+				"color.perBand": "各光带配色",
+				"color.perBandSupport": "每条光带各挑一套配色；关掉「每条光带各自配色」会自动隐藏这一组，只剩上面的单色选择。",
+				"sec.show": "显示",
+				"show.glow": "边缘泛光",
+				"show.multi": "每条光带各自配色",
+				"show.reply": "等待回复（反向旋转）",
+				"sec.run": "运行参数",
+				"run.count": "正在运行的对话数",
+				"run.countSupport": "最多 4 条，等距镜像；新带等自己的槽位走到角落附近才出现，所以多带首尾不会互相追。",
+				"run.speed": "速度倍率",
+				"run.speedSupport": "改变一圈时长：1 是默认基准，0.19 最慢、1.88 最快（与插件设置里的「速度倍率」同义）。有光带运行时滑条会像播放中的进度条一样扭动。",
+				"run.sweep": "扫掠幅度",
+				"run.sweepSupport": "一圈之内的速度呼吸：0 匀速，0.62 默认（拐角慢、直边快），0.95 接近在拐角刹停。改动会在 200ms 内缓动生效。",
+				"run.trail": "拖尾长度",
+				"run.thick": "粗细",
+				"sec.read": "读数",
+				"actions.aria": "动画控制",
+				"btn.think": "开始思考",
+				"btn.entry": "角落重生",
+				"btn.more": "再加一条",
+				"btn.finish": "输出完成",
+				"btn.stop": "手动中断",
+				"btn.bg": "后台结束",
+				"btn.reset": "重置",
+				"panel.band": "光带",
+				"footer.copy": "© 2026 南清",
+				"footer.license": "MPL-2.0 许可",
+				"footer.licenseTitle": "MPL-2.0 许可证全文"
+			},
+			en: {
+				"page.title": "Rimlight · Lab",
+				"app.subtitle": "DeepSeek Harness · light-band lab",
+				"theme.toggle": "Toggle light and dark",
+				"theme.toLight": "Switch to light",
+				"theme.toDark": "Switch to dark",
+				"stage.aria": "Client window preview",
+				"stage.titlebar": "DeepSeek Harness · Rimlight preview window",
+				"egg.question": "Which pricing window are we in?",
+				"egg.prefix": "We are in ",
+				"egg.suffix": ".",
+				"egg.peak": "Peak Hours",
+				"egg.off": "Off-Peak Hours",
+				"composer.placeholder": "Type a message…",
+				"composer.send": "Send",
+				"panel.aria": "Lab console",
+				"sec.anim": "Animation",
+				"anim.support": "This build matches the release branch: the band is born in the bottom-left corner with a tail that grows from zero, and while the answer streams it laps the frame instead of leaving it to circle the reply.",
+				"sec.color": "Colour",
+				"color.model": "Model palette",
+				"color.perBand": "Palette per band",
+				"color.perBandSupport": "Each band picks its own palette. Turning off “Per-band palettes” hides this group and keeps the single select above.",
+				"sec.show": "Display",
+				"show.glow": "Edge glow",
+				"show.multi": "Per-band palettes",
+				"show.reply": "Waiting for reply (reverse)",
+				"sec.run": "Run",
+				"run.count": "Running conversations",
+				"run.countSupport": "Up to four bands, evenly mirrored. A new band appears only once its own slot reaches the corner, so several bands never chase each other.",
+				"run.speed": "Speed multiplier",
+				"run.speedSupport": "Changes the lap time: 1 is the default pace, 0.19 the slowest, 1.88 the fastest (same meaning as “Speed multiplier” in the plugin settings). While a band runs, the slider ripples like a playing progress bar.",
+				"run.sweep": "Sweep amplitude",
+				"run.sweepSupport": "Speed breathing within one lap: 0 is constant, 0.62 the default (slow in corners, quick along edges), 0.95 nearly stops at the corners. Changes ease in over 200 ms.",
+				"run.trail": "Trail length",
+				"run.thick": "Thickness",
+				"sec.read": "Readout",
+				"actions.aria": "Animation controls",
+				"btn.think": "Start thinking",
+				"btn.entry": "Reborn at corner",
+				"btn.more": "Add a band",
+				"btn.finish": "Finish output",
+				"btn.stop": "Interrupt",
+				"btn.bg": "End in background",
+				"btn.reset": "Reset",
+				"panel.band": "Band",
+				"footer.license": "MPL-2.0",
+				"footer.licenseTitle": "Full MPL-2.0 text"
+			}
+		};
+		var LANG = "zh";
+
+		function t(key) {
+			var d = DICT[LANG] || DICT.zh;
+			if (d && d[key] != null) return d[key];
+			if (DICT.zh[key] != null) return DICT.zh[key];
+			return key;
+		}
+
+		function apply() {
+			var root = document.documentElement;
+			root.setAttribute("lang", LANG === "zh" ? "zh-CN" : "en");
+			root.setAttribute("data-lang", LANG);
+			var i, nodes;
+			nodes = document.querySelectorAll("[data-i18n]");
+			for (i = 0; i < nodes.length; i++) nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+			nodes = document.querySelectorAll("[data-i18n-placeholder]");
+			for (i = 0; i < nodes.length; i++) nodes[i].setAttribute("placeholder", t(nodes[i].getAttribute("data-i18n-placeholder")));
+			nodes = document.querySelectorAll("[data-i18n-aria-label]");
+			for (i = 0; i < nodes.length; i++) nodes[i].setAttribute("aria-label", t(nodes[i].getAttribute("data-i18n-aria-label")));
+			nodes = document.querySelectorAll("[data-i18n-title]");
+			for (i = 0; i < nodes.length; i++) nodes[i].setAttribute("title", t(nodes[i].getAttribute("data-i18n-title")));
+			document.title = t("page.title");
+			var btn = document.getElementById("lang-toggle");
+			if (btn) {
+				// The button names the language you would switch *to*.
+				btn.textContent = LANG === "zh" ? "EN" : "中文";
+				var label = LANG === "zh" ? "Switch to English" : "切换到中文";
+				btn.setAttribute("aria-label", label);
+				btn.title = label;
+			}
+			try {
+				window.dispatchEvent(new CustomEvent("lab-lang", { detail: { lang: LANG } }));
+			} catch (e) { /* old engines: callers read t() when they repaint */ }
+		}
+
+		function set(lang) {
+			LANG = lang === "en" ? "en" : "zh";
+			try { localStorage.setItem(STORE, LANG); } catch (e) { /* private mode */ }
+			apply();
+		}
+
+		function init() {
+			var wanted = null;
+			try {
+				var qs = new URLSearchParams(location.search);
+				wanted = qs.get("lang");
+			} catch (e) { wanted = null; }
+			if (!wanted) { try { wanted = localStorage.getItem(STORE); } catch (e) { wanted = null; } }
+			if (!wanted) {
+				var nav = "";
+				try { nav = String((navigator && navigator.language) || ""); } catch (e) { nav = ""; }
+				wanted = nav.toLowerCase().indexOf("zh") === 0 ? "zh" : (nav ? "en" : "zh");
+			}
+			LANG = wanted === "en" ? "en" : "zh";
+			apply();
+			var btn = document.getElementById("lang-toggle");
+			if (btn) {
+				btn.addEventListener("click", function () { set(LANG === "zh" ? "en" : "zh"); });
+			}
+		}
+
+		window.__LAB_I18N__ = { t: t, apply: apply, set: set, get: function () { return LANG; } };
+		init();
+	})();
+</script>
+
+
+<script>
+	// Slider state layers: M3 draws an active track up to the handle. A range
+	// input cannot express that in CSS alone, so publish the percentage as a
+	// custom property and let the track gradient read it. The lab script also
+	// assigns `value` directly (URL params, reset), which fires no event, so the
+	// value badges are watched instead of only the inputs.
+	//
+	// The property has to land on the `.m3-slider-wrap` as well: the "playing"
+	// wave is a sibling of the input and cannot inherit a property set on it.
+	(function () {
+		function paint(el) {
+			var min = Number(el.min || 0);
+			var max = Number(el.max || 100);
+			var value = Number(el.value || 0);
+			var span = max - min;
+			var pct = span > 0 ? ((value - min) / span) * 100 : 0;
+			var pctText = pct.toFixed(2) + "%";
+			el.style.setProperty("--m3-slider-value", pctText);
+			var wrap = el.parentNode;
+			if (wrap && wrap.classList && wrap.classList.contains("m3-slider-wrap")) {
+				wrap.style.setProperty("--m3-slider-value", pctText);
+			}
+		}
+		var all = document.querySelectorAll(".m3-slider");
+		for (var i = 0; i < all.length; i++) {
+			(function (el) {
+				paint(el);
+				el.addEventListener("input", function () { paint(el); });
+				el.addEventListener("change", function () { paint(el); });
+			})(all[i]);
+		}
+		var pairs = [["v-count", "count"], ["v-speed", "speed"], ["v-sweep", "sweep"], ["v-trail", "trail"], ["v-thick", "thick"]];
+		pairs.forEach(function (pair) {
+			var badge = document.getElementById(pair[0]);
+			var input = document.getElementById(pair[1]);
+			if (!badge || !input) return;
+			try {
+				new MutationObserver(function () { paint(input); })
+					.observe(badge, { childList: true, characterData: true, subtree: true });
+			} catch (e) { /* no observer: the input event still repaints */ }
+		});
+
+	})();
+</script>
+
+<script>
+	// ---------------------------------------------------------------------
+	// The rate dial's track: one path that morphs.
+	//
+	// Material's expressive slider does not stack a wave on top of the normal
+	// track - the track itself changes shape, and it changes smoothly. The input's
+	// own track is therefore transparent here and this script paints the whole
+	// thing: the inactive stretch as a straight bar, the active stretch as a line
+	// whose amplitude is an animated number.
+	//
+	//   amplitude 0  -> exactly the stock 4dp M3 track (idle)
+	//   amplitude >0 -> the line ripples, and the ripple travels while it plays
+	//
+	// The amplitude is tweened instead of toggled, so starting and stopping look
+	// like the track taking a breath, not like two elements swapping. The band
+	// state comes from `data-bands`, which rimlight-lab.js derives from the scene
+	// (is a band actually painted?), never from a control's pressed state.
+	// ---------------------------------------------------------------------
+	(function () {
+		var wrap = document.querySelector(".m3-slider-wrap");
+		var input = document.getElementById("speed");
+		if (!wrap || !input) return;
+		var svg = wrap.querySelector(".m3-slider-canvas");
+		var pActive = wrap.querySelector(".m3-slider-canvas__active");
+		var pSpare = wrap.querySelector(".m3-slider-canvas__spare");
+		if (!svg || !pActive || !pSpare) return;
+
+		var H = 12;            // the canvas box: the wave needs room to swing
+		var MID = H / 2;
+		var AMP = 2.6;         // crest height in px, ~ Material's expressive dial
+		var LEN = 46;          // wavelength in px
+		var SPEED = 6.4;       // rad/s the crests travel while playing
+		var TWEEN = 260;       // ms for the straight <-> wave morph
+
+		var W = 0;
+		var amp = 0;           // current, eased
+		var phase = 0;
+		var raf = 0;
+		var lastT = 0;
+		var playing = false;
+
+		function measure() {
+			// The native track is inset by the handle radius on both sides, so the
+			// canvas is too (CSS `left/right: 10px`): that keeps the painted ends
+			// exactly under the handle's travel instead of a few px off. Only the
+			// viewBox is written here - the box itself is sized by CSS, so the two
+			// can never disagree after a resize.
+			W = Math.max(1, wrap.clientWidth - 20);
+			svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+			paint();
+		}
+
+		function progress() {
+			var min = Number(input.min) || 0;
+			var max = Number(input.max) || 1;
+			var v = Number(input.value) || 0;
+			if (max <= min) return 0;
+			return Math.max(0, Math.min(1, (v - min) / (max - min)));
+		}
+
+		// Straight from `x0` to `x1` at the resting height.
+		function line(x0, x1) {
+			return "M" + x0.toFixed(1) + " " + MID + " L" + x1.toFixed(1) + " " + MID;
+		}
+
+		// A line from 0 to `end` whose height undulates with the current
+		// amplitude. At amp = 0 every point sits on the centre line, so the path
+		// is literally the straight track.
+		function wave(end) {
+			if (end <= 0.4) return "";
+			var pts = [];
+			var step = 2;
+			var x;
+			for (x = 0; x <= end; x += step) {
+				var y = MID - amp * Math.sin((x / LEN) * Math.PI * 2 + phase);
+				pts.push((x === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(2));
+			}
+			if (x - step < end) {
+				var yEnd = MID - amp * Math.sin((end / LEN) * Math.PI * 2 + phase);
+				pts.push("L" + end.toFixed(1) + " " + yEnd.toFixed(2));
+			}
+			return pts.join(" ");
+		}
+
+		function paint() {
+			var end = progress() * W;
+			pActive.setAttribute("d", wave(end));
+			pSpare.setAttribute("d", end < W - 0.5 ? line(end, W) : "");
+		}
+
+		function tick(ts) {
+			if (!lastT) lastT = ts;
+			var dt = Math.min(64, ts - lastT);
+			lastT = ts;
+			var target = playing ? AMP : 0;
+			// Exponential approach with the tween constant, frame-rate independent:
+			// a straight swap looked like a glitch, this reads as one shape moving.
+			var k = 1 - Math.exp(-dt / (TWEEN / 3));
+			amp += (target - amp) * k;
+			if (Math.abs(target - amp) < 0.01) amp = target;
+			if (playing) phase -= (dt / 1000) * SPEED;
+			paint();
+			// Idle and settled: nothing left to animate, so stop burning frames.
+			if (!playing && amp === 0) { raf = 0; lastT = 0; return; }
+			raf = requestAnimationFrame(tick);
+		}
+
+		function setPlaying(on) {
+			if (on === playing) return;
+			playing = on;
+			if (!raf) { lastT = 0; raf = requestAnimationFrame(tick); }
+			// Reduced motion keeps the morph (it signals state) but freezes travel.
+			try {
+				if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) phase = 0;
+			} catch (e) { /* no matchMedia */ }
+		}
+
+		input.addEventListener("input", paint);
+		input.addEventListener("change", paint);
+		// The lab script writes `value` directly from URL params and reset; the
+		// value badge follows every one of those writes, so watch it.
+		var badge = document.getElementById("v-speed");
+		if (badge) {
+			try {
+				new MutationObserver(paint).observe(badge, { childList: true, characterData: true, subtree: true });
+			} catch (e) { /* no observer: input events still repaint */ }
+		}
+		if (window.ResizeObserver) {
+			try { new ResizeObserver(measure).observe(wrap); } catch (e) { /* no observer */ }
+		} else {
+			window.addEventListener("resize", measure);
+		}
+		// Watch the state attribute the lab scene publishes; the initial value is
+		// read once so a scripted `?mode=thinking` capture starts already wavy.
+		try {
+			new MutationObserver(function () {
+				setPlaying(document.documentElement.getAttribute("data-bands") === "1");
+			}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-bands"] });
+		} catch (e) { /* no observer: the dial stays straight, which is honest */ }
+		measure();
+		setPlaying(document.documentElement.getAttribute("data-bands") === "1");
+		window.__LAB_RATE__ = {
+			amp: function () { return amp; },
+			playing: function () { return playing; },
+			paint: paint
+		};
+	})();
+</script>
+
+<script>
+	// Segmented button for the band count. Material's pattern for a small, fixed
+	// set - not a slider, not a dropdown. The hidden range below it stays the
+	// single source of truth so every existing flow (`countEl.value = ...`)
+	// keeps working; the buttons only write it and mirror its value.
+	(function () {
+		var countEl = document.getElementById("count");
+		var segs = Array.prototype.slice.call(document.querySelectorAll(".m3-segmented .m3-segment"));
+		if (!countEl || !segs.length) return;
+		function paint(n) {
+			for (var i = 0; i < segs.length; i++) {
+				var on = Number(segs[i].getAttribute("data-count")) === n;
+				segs[i].setAttribute("aria-checked", on ? "true" : "false");
+			}
+			// Only touch the badge when the text really changes: writing the same
+			// string still replaces the text node, which fires the observer below,
+			// which calls paint() again - an endless microtask loop that pins the
+			// renderer at 100% and makes the whole window stutter.
+			var badge = document.getElementById("v-count");
+			if (badge && badge.textContent !== String(n)) badge.textContent = String(n);
+		}
+		function apply(n, notify) {
+			var v = Math.max(1, Math.min(4, Math.round(Number(n) || 1)));
+			countEl.value = String(v);
+			if (notify) {
+				try { countEl.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) { /* old engine */ }
+			}
+			paint(v);
+		}
+		segs.forEach(function (btn) {
+			btn.addEventListener("click", function () {
+				apply(Number(btn.getAttribute("data-count")), true);
+			});
+		});
+		// The lab script writes the value directly in several flows (URL params,
+		// reset, a finished band). The badge is the one node every flow updates,
+		// so follow it instead of patching each call site - but only when it
+		// disagrees, or the callback would re-enter its own write.
+		var badgeEl = document.getElementById("v-count");
+		if (badgeEl) {
+			try {
+				new MutationObserver(function () {
+					// The badge already carries the new value; only the segment
+					// highlight can be stale. Never write the badge back from here.
+					var want = Math.round(Number(countEl.value) || 1);
+					for (var i = 0; i < segs.length; i++) {
+						var on = Number(segs[i].getAttribute("data-count")) === want;
+						segs[i].setAttribute("aria-checked", on ? "true" : "false");
+					}
+				}).observe(badgeEl, { childList: true, characterData: true, subtree: true });
+			} catch (e) { /* no observer: sync() still exists for the lab script */ }
+		}
+		paint(Math.round(Number(countEl.value) || 1));
+		window.__LAB_COUNT__ = {
+			set: function (n) { apply(n, false); },
+			sync: function () { paint(Math.round(Number(countEl.value) || 1)); }
+		};
+	})();
+</script>
+
 <script>
 	// A minimal React stand-in so the real client.js can be evaluated in this
 	// page without the app: the factory runs, the geometry comes out through
@@ -765,8 +1969,8 @@
 		};
 	})();
 </script>
-<script src="../client.js?v=20261025f"></script>
-<script src="./rimlight-lab.js?v=20261025f"></script>
+<script src="../client.js?v=20261107g"></script>
+<script src="./rimlight-lab.js?v=20261107g"></script>
 <script>
 	(function () {
 		var sw = document.getElementById("sweep");
@@ -799,16 +2003,33 @@
 	var KEY = "rimlight-lab-theme";
 	var root = document.documentElement;
 	var btn = document.getElementById("theme-toggle");
+	// The title names the mode you would switch to, so it has to follow both the
+	// surface and the language: the dictionary owns the copy, this owns the state.
+	function titleFor(mode) {
+		var t = window.__LAB_I18N__ ? window.__LAB_I18N__.t : null;
+		var key = mode === "dark" ? "theme.toLight" : "theme.toDark";
+		if (t) return t(key);
+		return mode === "dark" ? "\u5207\u6362\u5230\u660e\u4eae\u6a21\u5f0f" : "\u5207\u6362\u5230\u9ed1\u6697\u6a21\u5f0f";
+	}
 	function apply(mode) {
 		root.setAttribute("data-theme", mode);
 		if (!btn) return;
 		btn.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
-		btn.title = mode === "dark" ? "\u5207\u6362\u5230\u660e\u4eae\u6a21\u5f0f" : "\u5207\u6362\u5230\u9ed1\u6697\u6a21\u5f0f";
+		btn.title = titleFor(mode);
 	}
+	window.addEventListener("lab-lang", function () {
+		apply(root.getAttribute("data-theme") === "light" ? "light" : "dark");
+	});
 	var wanted = null;
 	try { wanted = localStorage.getItem(KEY); } catch (e) { wanted = null; }
+	// `theme=` is the palette selector for the lab itself (`?theme=kimi`), so the
+	// surface has to have its own name: `surface=light|dark`. `theme=light|dark`
+	// still works for old links.
 	var fromUrl = null;
-	try { fromUrl = new URLSearchParams(location.search).get("theme"); } catch (e) { fromUrl = null; }
+	try {
+		var qs = new URLSearchParams(location.search);
+		fromUrl = qs.get("surface") || qs.get("theme");
+	} catch (e) { fromUrl = null; }
 	apply(fromUrl === "light" || fromUrl === "dark" ? fromUrl : (wanted === "light" ? "light" : "dark"));
 	if (btn) {
 		btn.addEventListener("click", function () {
@@ -819,5 +2040,393 @@
 	}
 })();
 </script>
+<script>
+	// ---------------------------------------------------------------------
+	// Dynamic color: the lab chrome takes its scheme from the model palette.
+	//
+	// Material's dynamic color builds five tonal palettes from ONE source colour
+	// (primary / secondary / tertiary / neutral / neutral-variant) at fixed
+	// chroma, and every role reads a fixed tone from them. That alone makes two
+	// brands with a similar hue look identical, so on top of it:
+	//
+	//   * the palette's own second and third colours feed secondary and tertiary.
+	//     Palettes that carry several hues (Gemini's green / yellow / red) are
+	//     collapsed to the one colour that names them instead: Gemini takes its
+	//     head red, so the chrome reads as Gemini rather than as a three-colour
+	//     ribbon;
+	//   * chroma comes from the brand, so a vivid brand gets a vivid scheme while
+	//     a silver one (Kimi, Grok) stays near-neutral;
+	//   * Prism has no colour of its own (it is translucent glass), so its chrome
+	//     is genuinely achromatic - grey and white, zero hue - which is also what
+	//     keeps it apart from the two monochrome-ish palettes, whose greys keep a
+	//     faint blue cast;
+	//   * bands from OTHER providers are harmonized toward the primary
+	//     (Blend.harmonize, 25%) so several providers still read as one family.
+	//
+	// Tones are the baseline M3 assignments (surface = neutral 98 light / 6 dark,
+	// primary = 40 / 80, outline = neutral-variant 50 / 60, ...), which is why an
+	// unmodified page renders the stock #6750a4 scheme.
+	//
+	// The perceptual space is OKLCH rather than HCT: same lightness / hue /
+	// chroma model in a compact form, so the ramps behave like Material's while
+	// the page stays dependency-free.
+	// ---------------------------------------------------------------------
+	(function () {
+		var root = document.documentElement;
+
+		// Which Material scheme variant derives the accents. Material ships
+		// several (content / fidelity / tonal-spot / vibrant / expressive /
+		// monochrome / neutral / rainbow / fruit-salad); they differ mainly in
+		// how far the secondary and tertiary palettes may wander from the source
+		// hue.
+		//
+		// `fidelity` is the "closest to the source" one: the primary palette *is*
+		// the brand colour (same hue, same chroma), and the secondary is the same
+		// hue with reduced chroma. The one liberty taken here: a monochrome brand
+		// does not get the literal complement for `tertiary` (Material's fidelity
+		// uses TemperatureCache.complement, which throws a yellow - or, as users
+		// kept reporting, a pink/purple - into an otherwise blue UI). When the
+		// palette has no third hue, tertiary stays on the brand hue, muted.
+		// Palettes that DO carry several hues (Gemini, Prism) keep their own.
+		// `?scheme=content|tonal-spot` switches to those variants for comparison.
+		var SCHEME_VARIANT = (function () {
+			try {
+				var m = /(?:\?|&)scheme=(content|fidelity|tonal-spot)/.exec(location.search || "");
+				return m ? m[1] : "fidelity";
+			} catch (e) { return "fidelity"; }
+		})();
+
+		function lin(c) { return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+		function gam(c) { return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; }
+		function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+		function hexToRgb(hex) {
+			var h = String(hex || "").replace("#", "");
+			if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+			if (h.length < 6) return [0, 0, 0];
+			return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255];
+		}
+		function rgbToHex(rgb) {
+			return "#" + rgb.map(function (v) {
+				var x = Math.round(clamp(v, 0, 1) * 255);
+				return (x < 16 ? "0" : "") + x.toString(16);
+			}).join("");
+		}
+		function rgbToOklch(rgb) {
+			var r = lin(rgb[0]), g = lin(rgb[1]), b = lin(rgb[2]);
+			var l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
+			var m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
+			var s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
+			var l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s);
+			var L = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_;
+			var A = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_;
+			var B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_;
+			var C = Math.sqrt(A * A + B * B);
+			var H = Math.atan2(B, A) * 180 / Math.PI;
+			if (H < 0) H += 360;
+			return { L: L, C: C, H: H };
+		}
+		function oklchToRgb(L, C, H) {
+			var rad = H * Math.PI / 180;
+			var a = C * Math.cos(rad), b = C * Math.sin(rad);
+			var l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+			var m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+			var s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+			var l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+			var r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+			var g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+			var bb = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+			return [gam(r), gam(g), gam(bb)];
+		}
+		function inGamut(rgb) {
+			for (var i = 0; i < 3; i++) if (rgb[i] < -0.001 || rgb[i] > 1.001) return false;
+			return true;
+		}
+		function toneHex(hue, chroma, tone) {
+			// Material tone is CIELAB L* (0-100); OKLCH L is its perceptual
+			// equivalent, so tone 98 lands on near-white and tone 6 on the dark
+			// surface instead of collapsing to black.
+			var L = clamp((clamp(tone, 0, 100) + 16) / 116, 0, 1);
+			var rgb = oklchToRgb(L, chroma, hue);
+			if (!inGamut(rgb)) {
+				var lo = 0, hi = chroma;
+				for (var i = 0; i < 14; i++) {
+					var mid = (lo + hi) / 2;
+					if (inGamut(oklchToRgb(L, mid, hue))) lo = mid; else hi = mid;
+				}
+				rgb = oklchToRgb(L, lo, hue);
+			}
+			return rgbToHex(rgb);
+		}
+		function harmonize(hue, targetHue, amount) {
+			var d = ((targetHue - hue + 540) % 360) - 180;
+			var out = (hue + d * (amount == null ? 0.25 : amount)) % 360;
+			return out < 0 ? out + 360 : out;
+		}
+
+		// Prism has no hue of its own. The chrome is grey / white instead of the
+		// dispersion colours the band itself wears: zero chroma, so nothing on the
+		// page is tinted at all. That is also how it stays distinct from Kimi's
+		// silver and Grok's graphite - those keep a faint blue cast, Prism has no
+		// cast at all.
+		var PRISM_WHITE = { L: 0.94, C: 0.0, H: 265, achromatic: true };
+		// Gemini's ramp is green -> yellow -> red -> white head. The UI takes the
+		// head red only.
+		var GEMINI_RED = "#ea4335";
+
+		// Prism is not just "one more grey": Kimi's silver and Grok's graphite
+		// sit at the same tones with a faint blue cast, so zero chroma alone is a
+		// difference you have to look for. The glass palette also runs brighter
+		// in the dark scheme and deeper in the light one, which reads as frosted
+		// white (dark) / graphite on white (light) at a glance.
+		var ACHROMATIC_TONES = {
+			light: {
+				primary: 26, onPrimary: 100, primaryContainer: 88, onPrimaryContainer: 8,
+				secondary: 30, onSecondary: 100, secondaryContainer: 90, onSecondaryContainer: 10,
+				tertiary: 34, onTertiary: 100, tertiaryContainer: 92, onTertiaryContainer: 10,
+				outline: 46, inversePrimary: 92, surfaceTint: 26
+			},
+			dark: {
+				primary: 92, onPrimary: 12, primaryContainer: 30, onPrimaryContainer: 96,
+				secondary: 88, onSecondary: 14, secondaryContainer: 26, onSecondaryContainer: 94,
+				tertiary: 84, onTertiary: 16, tertiaryContainer: 24, onTertiaryContainer: 92,
+				outline: 64, inversePrimary: 26, surfaceTint: 92
+			}
+		};
+
+		var TONES = {
+			light: {
+				primary: 40, onPrimary: 100, primaryContainer: 90, onPrimaryContainer: 10,
+				secondary: 40, onSecondary: 100, secondaryContainer: 90, onSecondaryContainer: 10,
+				tertiary: 40, onTertiary: 100, tertiaryContainer: 90, onTertiaryContainer: 10,
+				error: 40, onError: 100, errorContainer: 90, onErrorContainer: 10,
+				surface: 98, onSurface: 10, surfaceVariant: 90, onSurfaceVariant: 30,
+				surfaceContainerLowest: 100, surfaceContainerLow: 96, surfaceContainer: 94,
+				surfaceContainerHigh: 92, surfaceContainerHighest: 90,
+				outline: 50, outlineVariant: 80,
+				inverseSurface: 20, inverseOnSurface: 95, inversePrimary: 80,
+				background: 98, onBackground: 10, surfaceBright: 98, surfaceDim: 87, surfaceTint: 40
+			},
+			dark: {
+				primary: 80, onPrimary: 20, primaryContainer: 30, onPrimaryContainer: 90,
+				secondary: 80, onSecondary: 20, secondaryContainer: 30, onSecondaryContainer: 90,
+				tertiary: 80, onTertiary: 20, tertiaryContainer: 30, onTertiaryContainer: 90,
+				error: 80, onError: 20, errorContainer: 30, onErrorContainer: 90,
+				surface: 6, onSurface: 90, surfaceVariant: 30, onSurfaceVariant: 80,
+				surfaceContainerLowest: 4, surfaceContainerLow: 10, surfaceContainer: 12,
+				surfaceContainerHigh: 17, surfaceContainerHighest: 22,
+				outline: 60, outlineVariant: 30,
+				inverseSurface: 90, inverseOnSurface: 20, inversePrimary: 40,
+				background: 6, onBackground: 90, surfaceBright: 24, surfaceDim: 6, surfaceTint: 80
+			}
+		};
+		var PALETTE_OF = {
+			primary: "primary", onPrimary: "primary", primaryContainer: "primary", onPrimaryContainer: "primary",
+			inversePrimary: "primary", surfaceTint: "primary",
+			secondary: "secondary", onSecondary: "secondary", secondaryContainer: "secondary", onSecondaryContainer: "secondary",
+			tertiary: "tertiary", onTertiary: "tertiary", tertiaryContainer: "tertiary", onTertiaryContainer: "tertiary",
+			error: "error", onError: "error", errorContainer: "error", onErrorContainer: "error",
+			outline: "variant", outlineVariant: "variant", surfaceVariant: "variant", onSurfaceVariant: "variant",
+			surface: "neutral", onSurface: "neutral", surfaceContainerLowest: "neutral", surfaceContainerLow: "neutral",
+			surfaceContainer: "neutral", surfaceContainerHigh: "neutral", surfaceContainerHighest: "neutral",
+			inverseSurface: "neutral", inverseOnSurface: "neutral", background: "neutral", onBackground: "neutral",
+			surfaceBright: "neutral", surfaceDim: "neutral"
+		};
+
+		function colorOf(text) {
+			var s = String(text || "");
+			var hex = null;
+			var m = s.match(/#([0-9a-fA-F]{6})/);
+			if (m) hex = "#" + m[1];
+			else {
+				var r = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?/);
+				if (r && (r[4] === undefined || Number(r[4]) >= 0.5)) {
+					hex = rgbToHex([Number(r[1]) / 255, Number(r[2]) / 255, Number(r[3]) / 255]);
+				}
+			}
+			return hex ? rgbToOklch(hexToRgb(hex)) : null;
+		}
+
+		// The colours a palette actually uses. A palette that carries several
+		// hues is still collapsed to one identity colour here: the UI follows the
+		// model's primary brand, not every stop of its gradient. Gemini is the
+		// one case where the brand hue is not the most saturated stop (its green
+		// is), so it is pinned to the head red instead.
+		function signatureOf(key) {
+			var D = window.__MARQUEE__ && window.__MARQUEE__.__debug;
+			var theme = D && D.THEMES ? D.THEMES[key] : null;
+			if (!theme) return [PRISM_WHITE];
+			// Prism is translucent glass: no colour of its own, so the chrome is
+			// pure grey / white and stays neutral on purpose.
+			if (theme.glass) return [PRISM_WHITE];
+			if (key === "gemini") return [rgbToOklch(hexToRgb(GEMINI_RED))];
+			var pool = [];
+			var stops = theme.stops || [];
+			for (var i = 0; i < stops.length; i++) {
+				var c = colorOf(stops[i][1]);
+				if (c && c.C >= 0.035) pool.push(c);
+			}
+			var core = colorOf(theme.core);
+			if (core && core.C >= 0.035) pool.push(core);
+			pool.sort(function (a, b) { return b.C - a.C; });
+			var picked = [];
+			for (var p = 0; p < pool.length && picked.length < 3; p++) {
+				var col = pool[p];
+				var distinct = true;
+				for (var q = 0; q < picked.length; q++) {
+					var dh = Math.abs(((picked[q].H - col.H + 540) % 360) - 180);
+					if (dh < 26) { distinct = false; break; }
+				}
+				if (distinct) picked.push(col);
+			}
+			// Nothing colourful in the palette (Kimi's silver, Grok's graphite): keep
+			// the scheme near-neutral instead of inventing a hue.
+			if (!picked.length) picked.push({ L: 0.5, C: 0.012, H: 265 });
+			return picked;
+		}
+
+		function activeKeys() {
+			var keys = [];
+			var multi = document.getElementById("multi");
+			if (multi && multi.checked) {
+				var rows = document.querySelectorAll("#band-rows .brow select");
+				for (var i = 0; i < rows.length; i++) keys.push(rows[i].value);
+			}
+			if (!keys.length) {
+				var sel = document.getElementById("theme");
+				if (sel && sel.value) keys.push(sel.value);
+			}
+			return keys.length ? keys : ["deepseek"];
+		}
+
+		// Chroma is in OKLCH units (0-0.4), not HCT's 0-100. Material's tonal-spot
+		// palettes are 36 / 16 / 24 in HCT, which is roughly 0.13 / 0.058 / 0.086
+		// here; the neutral pair sits near zero.
+		var VARIANTS = {
+			fidelity: function (p) {
+				return {
+					primary: p.C,
+					secondary: Math.max(p.C - 0.12, p.C * 0.5),
+					tertiary: Math.max(p.C * 0.35, 0.012)   // same hue: no invented colour
+				};
+			},
+			content: function (p) {
+				return {
+					primary: p.C,
+					secondary: Math.max(p.C - 0.12, p.C * 0.5),
+					tertiary: Math.max(p.C * 0.7, 0.03)
+				};
+			},
+			"tonal-spot": function () {
+				return { primary: 0.13, secondary: 0.058, tertiary: 0.086 };
+			}
+		};
+
+		// How far a *third* palette hue is allowed to travel. `fidelity` keeps
+		// accents on the brand hue; the analogues (+60) are only used when the
+		// palette itself does not supply a second/third colour.
+		var ANALOG = { fidelity: 0, content: 60, "tonal-spot": 60 };
+
+		function schemeFor(keys) {
+			var sigs = keys.map(signatureOf);
+			var primary = sigs[0][0];
+			var variant = SCHEME_VARIANT;
+			var chroma = (VARIANTS[variant] || VARIANTS.fidelity)(primary);
+			// Neutral ramps: a hair of the brand hue keeps the greys from being
+			// dead flat, and Prism zeroes it out completely.
+			chroma.neutral = 0.006;
+			chroma.variant = 0.014;
+			if (primary.achromatic) {
+				// Prism: no tint anywhere, not even on the surface. A hair of
+				// chroma stays so the ramps keep their Material tone curve, but
+				// nothing is visible - the page reads as grey / white.
+				chroma.primary = 0.002;
+				chroma.secondary = 0.002;
+				chroma.tertiary = 0.002;
+				chroma.neutral = 0;
+				chroma.variant = 0;
+			} else {
+				chroma.primary = clamp(chroma.primary, 0.03, 0.26);
+				chroma.secondary = clamp(chroma.secondary, 0.012, 0.14);
+				chroma.tertiary = clamp(chroma.tertiary, 0.012, 0.13);
+			}
+
+			// A palette that ships several distinct hues keeps them: those are the
+			// brand. They are only nudged a quarter of the way toward the primary,
+			// which is Material's harmonize rule for custom colours, so two
+			// providers still read as one family.
+			var secondOwn = sigs[0][1] || null;
+			var thirdOwn = sigs[0][2] || null;
+			if (!secondOwn && sigs[1] && sigs[1][0]) {
+				secondOwn = { L: sigs[1][0].L, C: sigs[1][0].C, H: harmonize(sigs[1][0].H, primary.H, 0.25) };
+			}
+			if (!thirdOwn && sigs[2] && sigs[2][0]) {
+				thirdOwn = { L: sigs[2][0].L, C: sigs[2][0].C, H: harmonize(sigs[2][0].H, primary.H, 0.25) };
+			}
+
+			var hueSecondary = secondOwn ? secondOwn.H : primary.H;
+			var hueTertiary = thirdOwn
+				? thirdOwn.H
+				: (primary.H + (ANALOG[variant] || 0)) % 360;
+
+			return {
+				keys: keys,
+				variant: variant,
+				signature: sigs[0].map(function (c) { return Math.round(c.H); }),
+				hues: {
+					primary: primary.H,
+					secondary: hueSecondary,
+					tertiary: hueTertiary,
+					neutral: primary.H,
+					variant: primary.H,
+					error: 25
+				},
+				chroma: {
+					primary: chroma.primary,
+					// A palette-supplied accent keeps its own saturation, scaled to
+					// the scheme so the UI does not shout.
+					secondary: secondOwn ? clamp(secondOwn.C * 0.75, 0.02, 0.12) : chroma.secondary,
+					tertiary: thirdOwn ? clamp(thirdOwn.C * 0.7, 0.02, 0.11) : chroma.tertiary,
+					neutral: chroma.neutral,
+					variant: chroma.variant,
+					error: 0.18
+				},
+				derived: { secondary: !secondOwn, tertiary: !thirdOwn },
+				achromatic: primary.achromatic === true
+			};
+		}
+
+		function applyScheme() {
+			var keys = activeKeys();
+			var scheme = schemeFor(keys);
+			var mode = root.getAttribute("data-theme") === "light" ? "light" : "dark";
+			var tones = TONES[mode];
+			if (scheme.achromatic) tones = Object.assign({}, tones, ACHROMATIC_TONES[mode]);
+			for (var role in tones) {
+				if (!Object.prototype.hasOwnProperty.call(tones, role)) continue;
+				var pal = PALETTE_OF[role] || "neutral";
+				var hex = toneHex(scheme.hues[pal], scheme.chroma[pal], tones[role]);
+				root.style.setProperty("--md-sys-color-" + role.replace(/[A-Z]/g, function (c) { return "-" + c.toLowerCase(); }), hex);
+			}
+			root.style.setProperty("--md-sys-color-scrim", "#000000");
+			root.style.setProperty("--md-sys-color-shadow", "#000000");
+			window.__M3SCHEME__ = scheme;
+		}
+
+		applyScheme();
+		try {
+			new MutationObserver(applyScheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+		} catch (e) { /* no observer: the toggle keeps the previous scheme */ }
+		var panel = document.getElementById("panel");
+		if (panel) panel.addEventListener("change", applyScheme);
+		if (panel) panel.addEventListener("click", function () { setTimeout(applyScheme, 0); });
+		try {
+			var host = document.getElementById("band-rows");
+			if (host) new MutationObserver(applyScheme).observe(host, { childList: true });
+		} catch (e) { /* no observer */ }
+	})();
+
+</script>
+
 </body>
 </html>

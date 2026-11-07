@@ -17,7 +17,9 @@ window.__ModuleLoader__.load({
 			const h = React.createElement;
 			const NS = "dsh-rimlight";
 			const primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-			const { SettingsForm, SettingsValueField, settingsNumberField, SettingsFormModel } = primitives;
+			// The settings page draws its own frame and rows (see MarqueeSettings), so
+			// only the staged model and its field specs are taken from the primitives.
+			const { settingsNumberField, SettingsFormModel } = primitives;
 			const settingsTextField = typeof primitives.settingsTextField === "function" ? primitives.settingsTextField : null;
 			const SwitchControl = typeof primitives.Switch === "function" ? primitives.Switch : null;
 
@@ -34,6 +36,7 @@ window.__ModuleLoader__.load({
 					save: "保存",
 					saving: "保存中…",
 					reset: "重置",
+					resetAllHint: "清除所有覆盖项，恢复默认值；点「保存」后生效",
 					overridden: "已覆盖",
 					invalid: "无效数值",
 					trail: "拖尾长度 (px)",
@@ -43,11 +46,11 @@ window.__ModuleLoader__.load({
 					sweep: "扫掠幅度",
 					sweepHint: "边框上一圈之内的速度呼吸幅度：0 为匀速，0.62 为默认（拐角慢、直边快），范围 0–0.95",
 					speed: "速度倍率",
-					speedHint: "沿边框绕行的快慢：1 为默认，0.5 更慢、2 更快（范围 0.3–3）",
+					speedHint: "沿边框绕行的快慢：1 为默认基准，0.5 更慢、2 更快（范围 0.19–1.88）",
 					modelColor: "根据对话使用模型自动选择配色",
+					edgeGlow: "边缘泛光",
 					theme: "全局配色",
 					unknownTheme: "无法识别时使用的配色",
-					edgeGlow: "泛光开关",
 				},
 				en: {
 					unavailable: "This plugin isn't loaded right now, so it can't be configured.",
@@ -56,6 +59,7 @@ window.__ModuleLoader__.load({
 					save: "Save",
 					saving: "Saving...",
 					reset: "Reset",
+					resetAllHint: "Clear every override and go back to the defaults; applied when you save",
 					overridden: "Overridden",
 					invalid: "Invalid value",
 					trail: "Trail length (px)",
@@ -65,11 +69,11 @@ window.__ModuleLoader__.load({
 					sweep: "Sweep amplitude",
 					sweepHint: "How much the speed breathes over one lap: 0 is constant speed, 0.62 is the default (slow in the corners, quick along the edges), 0-0.95",
 					speed: "Speed multiplier",
-					speedHint: "How fast the band circles the frame: 1 is the default, 0.5 slower, 2 faster (0.3-3)",
+					speedHint: "How fast the band circles the frame: 1 is the default pace, 0.5 slower, 2 faster (0.19-1.88)",
 					modelColor: "Pick colours from the model each conversation uses",
+					edgeGlow: "Edge glow",
 					theme: "Global palette",
 					unknownTheme: "Palette when the model is unknown",
-					edgeGlow: "Glow",
 				},
 			};
 			let localeService = null;
@@ -115,9 +119,19 @@ window.__ModuleLoader__.load({
 			const TRAIL_MIN = 40;
 			const TRAIL_MAX = 1200;
 			const DEFAULT_THICKNESS = 6;
-			const DEFAULT_SPEED = 1.6;
-			const SPEED_MIN = 0.3;
-			const SPEED_MAX = 3;
+			const DEFAULT_SPEED = 1;
+			// The dial is quoted against the pace the first release shipped: the
+			// same band speed that used to read 1.6 now reads 1. Absolute speeds
+			// are unchanged, only the numbering is - so a lap still takes the same
+			// time at the default, and the ends of the dial (0.19 / 1.88) are the
+			// old 0.3 / 3.
+			const SPEED_MIN = 0.19;
+			const SPEED_MAX = 1.88;
+			const SPEED_REFERENCE = 1.6;
+			// Values above the dial are legacy numbers from the 1.6-based scale
+			// (an upgraded config can carry them), so the schema keeps accepting
+			// them and they are divided back onto the dial here.
+			const SPEED_LEGACY_MAX = SPEED_MAX * SPEED_REFERENCE;
 			const THICKNESS_MIN = 2;
 			const THICKNESS_MAX = 24;
 			const ALPHA = 0.95;
@@ -230,6 +244,18 @@ const GHOST_LEAD_MS = 180;
 			const CHROME_W = CHROME_STRIP ? 138 : 0;
 			const CHROME_H = CHROME_STRIP ? 40 : 0;
 			const CHROME_FEATHER = 18;
+			// The host window has rounded corners, but nothing in our own tree
+			// carries that radius: it lives on the shell (or is cut by the OS). The
+			// track has to turn with the same arc, otherwise the band's outer edge
+			// crosses the window outline at every corner and the window clips a
+			// wedge out of it ("the corner of the band looks cut off"). Probe the
+			// ancestors for a radius; when none of them declares one, fall back to
+			// the radius a top-level window is rounded with - Windows 11 uses about
+			// 8 CSS px, and the old 12 px guess put the band's outer edge outside
+			// that arc at the bottom-left corner, right where every band is born.
+			const HOST_CORNER_FALLBACK = 8;
+			const HOST_CORNER_MIN = 4;
+			const HOST_CORNER_MAX = 40;
 			// Set to true to draw a live readout of what the overlay resolved in
 			// its bottom-left corner (handy when the window layout or the model
 			// reporting changes).
@@ -252,6 +278,11 @@ const GHOST_LEAD_MS = 180;
 	pointer-events: none;
 	z-index: 9999;
 	overflow: hidden;
+	/* The overlay paints one 320px comet strip per band and nothing else: keep
+	   layout/paint inside it so a repaint of the band cannot invalidate the app
+	   underneath (it already sits in its own stacking context, so the blended
+	   layers are unaffected). */
+	contain: layout paint style;
 	will-change: opacity;
 }
 .dsh-marquee-svg {
@@ -260,9 +291,11 @@ const GHOST_LEAD_MS = 180;
 	width: 100%;
 	height: 100%;
 }
+/* The halo's softness is baked into its radial gradient: a CSS blur forced the
+   whole 320px tail through a fresh blur rasterisation every frame. The radius
+   compensates (3.6 -> 5.6 half-widths), so the falloff reads the same. */
 .dsh-marquee-glow {
-	filter: blur(9px);
-	opacity: 0.62;
+	opacity: 0.58;
 }
 .dsh-marquee-comet {
 	animation: dsh-marquee-pulse var(--dsh-marquee-pulse) ease-in-out infinite;
@@ -273,6 +306,31 @@ const GHOST_LEAD_MS = 180;
 }
 @media (prefers-reduced-motion: reduce) {
 	.dsh-marquee-comet { animation: none; }
+}
+/* The panel's own action row: the host frame only ever draws Save, so the
+   single reset that clears every override is drawn here, in the same metrics
+   as the host's primary button but on the input surface - a secondary action
+   sitting next to the primary one instead of floating between rows. */
+.dsh-marquee-reset {
+	appearance: none;
+	border: 0.5px solid var(--dsw-alias-border-l4);
+	border-radius: var(--dsw-radius-md);
+	padding: 5px 14px;
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+	cursor: pointer;
+	background: var(--dsw-alias-bg-layer-3);
+	color: var(--dsw-alias-label-primary);
+}
+.dsh-marquee-reset:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+@media (hover: hover) {
+	.dsh-marquee-reset:hover:not(:disabled) {
+		background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-3));
+	}
 }
 `;
 
@@ -461,6 +519,29 @@ const GHOST_LEAD_MS = 180;
 						["100%", "rgba(255,45,99,0)"],
 					],
 				},
+				// MiMo (Xiaomi's model line): a pale, warm yellow. The ramp opens
+				// almost colourless and only warms up late, so the tail reads as
+				// light rather than as gold leaf. The 54% stop is the one the eye
+				// actually sees (the gradient is stretched across the whole trail),
+				// so it has to stay a whisper of yellow - anything deeper reads as
+				// gold on the dark shell.
+				mimo: {
+					key: "mimo",
+					label: "MiMo",
+					stops: [
+						["0%", "rgba(247,238,204,0)"],
+						["24%", "rgba(250,243,218,0.18)"],
+						["54%", "#f6edc8"],
+						["80%", "#fcf7e6"],
+						["100%", "#fffefa"],
+					],
+					core: "#fffefb",
+					glow: [
+						["0%", "rgba(255,253,245,0.86)"],
+						["45%", "rgba(247,236,200,0.26)"],
+						["100%", "rgba(236,224,180,0)"],
+					],
+				},
 				// Meta blue #0866FF: azure, brighter and more cyan than DeepSeek.
 				meta: {
 					key: "meta",
@@ -539,6 +620,10 @@ const GHOST_LEAD_MS = 180;
 				["grok", ["grok", "x-ai", "xai", "x.ai"]],
 				["zhipu", ["glm-", "glm4", "glm5", "chatglm", "zhipu", "\u667a\u8c31", "bigmodel", "z.ai"]],
 				["minimax", ["minimax", "abab", "\u6d77\u87ba", "hailuo", "mini-max"]],
+				// Xiaomi MiMo. A bare "mimo" is avoided on purpose: MIMO is also
+				// a wireless term and several unrelated brands, so only the
+				// versioned ids and the vendor token count as evidence.
+				["mimo", ["mimo-v2", "mimo-7b", "mimo_v2", "mimo-v1", "mimo_v1", "xiaomimimo", "xiaomi-mimo", "\u5c0f\u7c73mimo"]],
 				["meta", ["llama", "meta-llama", "codellama"]],
 				["nvidia", ["nvidia", "nemotron", "cuda", "tegra", "nv-", "\u82f1\u4f1f\u8fbe"]],
 				["openai", ["openai", "gpt-", "gpt4", "gpt5", "chatgpt", "codex", "davinci", "o1-", "o1pro", "o3-", "o3mini", "o4-", "o4mini"]],
@@ -581,7 +666,7 @@ const GHOST_LEAD_MS = 180;
 			}
 
 			// Palette order and display names for the settings dropdowns.
-			const THEME_ORDER = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "meta", "nvidia", "prism"];
+			const THEME_ORDER = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "mimo", "meta", "nvidia", "prism"];
 
 			/**
 			 * Which model a conversation is actually calling.
@@ -796,8 +881,8 @@ const GHOST_LEAD_MS = 180;
 			const selectThickness = fieldNumber("thickness");
 			const selectSpeed = fieldNumber("speed");
 			const selectSweep = fieldNumber("sweep");
-			const selectEdgeGlow = fieldBoolean("edgeGlow");
 			const selectModelColor = fieldBoolean("modelColor");
+			const selectEdgeGlow = fieldBoolean("edgeGlow");
 			function fieldText(name) {
 				return function (value) {
 					const field = value && value[name];
@@ -825,18 +910,28 @@ const GHOST_LEAD_MS = 180;
 			const selectTheme = fieldText("theme");
 			const selectUnknownTheme = fieldText("unknownTheme");
 
-			// Hashed class names from the settings primitives' CSS modules, reused
-			// so the boolean rows look exactly like the native value fields.
+			// Hashed class names from the host's settings CSS modules. The panel
+			// borrows them so its rows are pixel-identical to the native ones; the
+			// hash in the middle changes with every host build, so when the panel
+			// suddenly loses its styling, this table is the one place to refresh
+			// (read the new names out of the running bundle, e.g.
+			// `._field_<hash>_<n>`).
 			const CLS = {
-				field: "_field_bjqpo_3",
-				head: "_head_bjqpo_14",
-				label: "_label_bjqpo_20",
-				labelGroup: "_labelGroup_bjqpo_29",
-				badges: "_badges_bjqpo_82",
-				reset: "_reset_bjqpo_88",
-				hint: "_hint_bjqpo_140",
-				input: "_input_bjqpo_107",
-				invalid: "_invalid_bjqpo_133",
+				field: "_field_181ew_3",
+				head: "_head_181ew_14",
+				label: "_label_181ew_20",
+				labelGroup: "_labelGroup_181ew_29",
+				badges: "_badges_181ew_88",
+				reset: "_reset_181ew_94",
+				hint: "_hint_181ew_148",
+				input: "_input_181ew_115",
+				invalid: "_invalid_181ew_141",
+				form: "_form_ft7vz_3",
+				footer: "_footer_ft7vz_16",
+				failed: "_failed_ft7vz_23",
+				save: "_save_ft7vz_32",
+				readOnly: "_readOnly_ft7vz_8",
+				unavailable: "_unavailable_ft7vz_9",
 			};
 
 			/**
@@ -852,9 +947,13 @@ const GHOST_LEAD_MS = 180;
 			 * `startX` picks the point on the bottom edge where the lap starts,
 			 * so the first frame of the reveal emerges from the composer side.
 			 */
-			function buildTrack(w, hgt, half, startX) {
+			function buildTrack(w, hgt, half, startX, corner) {
 				const t = Math.max(1, half);
-				const r = t;
+				// A rounded host window: the centreline has to turn with the same
+				// corner it sits `t` inside of, so the radius shrinks by `t` and the
+				// arc centre stays on the host's own corner centre.
+				const host = Number.isFinite(corner) && corner > 0 ? corner : 0;
+				const r = Math.max(t, host - t);
 				// The centreline runs `t` inside the frame, so a band of half-width
 				// `t` exactly touches the window edge.
 				const left = t;
@@ -1439,6 +1538,319 @@ const GHOST_LEAD_MS = 180;
 				return Date.now();
 			}
 
+			/**
+			 * The corner radius the window is actually drawn with.
+			 *
+			 * Walk a chain of elements and keep the largest radius declared by a
+			 * box that really fills the viewport: an inner card's radius (a message
+			 * bubble, a panel) is not the window's, and treating it as one made the
+			 * band cut straight across the real corner.
+			 */
+			function radiusFromChain(start, vw, vh) {
+				let el = start;
+				let depth = 0;
+				let best = 0;
+				while (el && depth < 24) {
+					let raw = "";
+					try {
+						const cs = getComputedStyle(el);
+						raw = cs ? cs.borderTopLeftRadius : "";
+					} catch (e) { raw = ""; }
+					const v = parseFloat(raw);
+					if (v > 0 && v > best) {
+						let r = null;
+						try { r = el.getBoundingClientRect(); } catch (e) { r = null; }
+						const fullBleed = !vw || !vh || !r ? true : (r.width >= vw - 2 && r.height >= vh - 2);
+						if (fullBleed) best = v;
+					}
+					el = el.parentElement;
+					depth++;
+				}
+				return best;
+			}
+			function hostCornerRadius(node) {
+				try {
+					const vw = typeof window !== "undefined" ? window.innerWidth : 0;
+					const vh = typeof window !== "undefined" ? window.innerHeight : 0;
+					let best = radiusFromChain(node && node.parentElement, vw, vh);
+					if (!(best > 0)) {
+						// The overlay is usually rendered through a portal, so the
+						// rounded window shell is not an ancestor of it and the walk
+						// above finds nothing - which is how the band ended up cutting
+						// the corner. The overlay ignores pointer events, so
+						// elementFromPoint sees the shell that actually paints the
+						// corner; walk up from there to find its radius.
+						const probes = [
+							[2, 2],
+							[Math.round(vw / 2), 2],
+							[Math.max(2, vw - 3), 2],
+							[2, Math.round(vh / 2)],
+						];
+						for (let i = 0; i < probes.length && !(best > 0); i++) {
+							let hit = null;
+							try { hit = document.elementFromPoint(probes[i][0], probes[i][1]); } catch (e) { hit = null; }
+							if (!hit) continue;
+							if (hit === node || (node && node.contains && node.contains(hit))) continue;
+							best = radiusFromChain(hit, vw, vh);
+						}
+					}
+					if (best > 0) return Math.max(HOST_CORNER_MIN, Math.min(HOST_CORNER_MAX, best));
+				} catch (e) { /* noop */ }
+				return HOST_CORNER_FALLBACK;
+			}
+
+			// ---------------------------------------------------------------------
+			// Light surfaces
+			//
+			// Every palette ends in a near-white head because that is what reads on
+			// the dark shell. On a light window surface that head sits at about
+			// 1:1.05 contrast - white on white - and the band all but disappears.
+			// When the surface is light the ramp is rebuilt around the palette's
+			// own brand tone: transparent at the tail, brand at the shoulder and a
+			// little darker than the brand at the tip, plus a thin outline, so the
+			// palette keeps its identity and the band keeps an edge on either
+			// background. Dark surfaces keep the shipped ramps untouched.
+			// ---------------------------------------------------------------------
+			function parseColorValue(text) {
+				const s = String(text == null ? "" : text).trim();
+				if (!s) return null;
+				if (s.charAt(0) === "#") {
+					const n = s.slice(1);
+					if (n.length === 3) {
+						return [
+							parseInt(n.charAt(0) + n.charAt(0), 16),
+							parseInt(n.charAt(1) + n.charAt(1), 16),
+							parseInt(n.charAt(2) + n.charAt(2), 16),
+							1,
+						];
+					}
+					if (n.length >= 6) {
+						return [
+							parseInt(n.slice(0, 2), 16),
+							parseInt(n.slice(2, 4), 16),
+							parseInt(n.slice(4, 6), 16),
+							1,
+						];
+					}
+					return null;
+				}
+				const m = s.match(/^rgba?\(([^)]*)\)$/i);
+				if (!m) return null;
+				const parts = m[1].split(/[,/\s]+/).filter(function (v) { return v !== ""; });
+				if (parts.length < 3) return null;
+				const nums = [Number(parts[0]), Number(parts[1]), Number(parts[2])];
+				for (let i = 0; i < 3; i++) if (!isFinite(nums[i])) return null;
+				const a = parts.length > 3 ? Number(parts[3]) : 1;
+				return [nums[0], nums[1], nums[2], isFinite(a) ? Math.max(0, Math.min(1, a)) : 1];
+			}
+			function colorLum(rgba) {
+				if (!rgba) return 1;
+				function lin(v) {
+					const x = Math.max(0, Math.min(255, v)) / 255;
+					return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+				}
+				return 0.2126 * lin(rgba[0]) + 0.7152 * lin(rgba[1]) + 0.0722 * lin(rgba[2]);
+			}
+			function contrastOnWhite(rgba) {
+				return 1.05 / (colorLum(rgba) + 0.05);
+			}
+			function mixColor(a, b, t) {
+				const k = Math.max(0, Math.min(1, Number(t) || 0));
+				const alpha = (a && a.length > 3 ? a[3] : 1) + ((b && b.length > 3 ? b[3] : 1) - (a && a.length > 3 ? a[3] : 1)) * k;
+				return [
+					a[0] + (b[0] - a[0]) * k,
+					a[1] + (b[1] - a[1]) * k,
+					a[2] + (b[2] - a[2]) * k,
+					alpha,
+				];
+			}
+			function hexByte(v) {
+				const x = Math.max(0, Math.min(255, Math.round(v)));
+				return (x < 16 ? "0" : "") + x.toString(16);
+			}
+			function toHexColor(rgba) {
+				return "#" + hexByte(rgba[0]) + hexByte(rgba[1]) + hexByte(rgba[2]);
+			}
+			function toRgba(rgba, alpha) {
+				const a = alpha == null ? (rgba.length > 3 ? rgba[3] : 1) : alpha;
+				return "rgba(" + Math.round(rgba[0]) + "," + Math.round(rgba[1]) + "," + Math.round(rgba[2]) + "," + Math.round(a * 1000) / 1000 + ")";
+			}
+			// The tone a palette is "made of": its darkest opaque stop. Not a fixed
+			// luminance threshold - MiMo's pale yellow sits at lum 0.85 and a
+			// threshold would drop it into the slate fallback - but "essentially
+			// white" still has to fall back, because Prism has nothing else and a
+			// white-on-white ramp would be invisible.
+			function themeDeepColor(theme) {
+				const stops = (theme && theme.stops) || [];
+				let best = null;
+				let bestLum = 2;
+				for (let i = 0; i < stops.length; i++) {
+					const rgba = parseColorValue(stops[i] && stops[i][1]);
+					if (!rgba) continue;
+					if (rgba[3] < 0.5) continue;
+					const lum = colorLum(rgba);
+					if (lum < bestLum) { bestLum = lum; best = rgba; }
+				}
+				if (!best || bestLum > 0.9) return [74, 85, 104, 1];
+				return best;
+			}
+			// Brand tone with a contrast floor, used for the OUTLINE only. A pale
+			// band on a white surface is legible because of its edge, not because
+			// its body is dark: darkening the body turned MiMo's pale yellow into a
+			// gold strip, which is not the palette. The body keeps the brand tint
+			// (see lightBodyTone) and the thin outline carries the contrast.
+			function lightDeepColor(theme) {
+				let deep = themeDeepColor(theme);
+				for (let i = 0; i < 6 && contrastOnWhite(deep) < 3.0; i++) {
+					deep = mixColor(deep, [0, 0, 0, 1], 0.12);
+				}
+				return deep;
+			}
+			function lightBodyTone(theme) {
+				return themeDeepColor(theme);
+			}
+			function lightStopsOf(theme) {
+				const deep = lightBodyTone(theme);
+				const lifted = mixColor(deep, [255, 255, 255, 1], 0.45);
+				const shoulder = mixColor(deep, [255, 255, 255, 1], 0.22);
+				const tip = mixColor(deep, [0, 0, 0, 1], 0.06);
+				return [
+					["0%", toRgba(lifted, 0)],
+					["28%", toRgba(lifted, 0.32)],
+					["58%", toRgba(lifted, 1)],
+					["84%", toRgba(shoulder, 1)],
+					["100%", toRgba(tip, 1)],
+				];
+			}
+			function lightGlowOf(theme) {
+				const deep = lightBodyTone(theme);
+				return [
+					["0%", toRgba(mixColor(deep, [0, 0, 0, 1], 0.06), 0.30)],
+					["50%", toRgba(deep, 0.14)],
+					["100%", toRgba(deep, 0)],
+				];
+			}
+			function lightHeadOf(theme) {
+				return toHexColor(mixColor(lightBodyTone(theme), [0, 0, 0, 1], 0.12));
+			}
+			function lightOutlineOf(theme, thickness) {
+				return {
+					color: toHexColor(lightDeepColor(theme)),
+					width: Math.max(1.2, thickness * 0.22),
+					opacity: 0.65,
+				};
+			}
+			// A host that declares its theme owns the answer: attributes first,
+			// then a theme class. Anything else is a guess.
+			function surfaceThemeSignal(node) {
+				if (!node || !node.getAttribute) return null;
+				const attrs = ["data-theme", "data-color-mode", "data-mode", "data-appearance", "data-scheme"];
+				for (let i = 0; i < attrs.length; i++) {
+					const v = String(node.getAttribute(attrs[i]) || "").toLowerCase();
+					if (!v) continue;
+					if (v.indexOf("light") >= 0) return true;
+					if (v.indexOf("dark") >= 0) return false;
+				}
+				let cls = "";
+				try { cls = String(node.className || "").toLowerCase(); } catch (e) { cls = ""; }
+				if (/(^|[\s_-])(theme|mode|scheme)?[-_]?light($|[\s_-])/.test(cls)) return true;
+				if (/(^|[\s_-])(theme|mode|scheme)?[-_]?dark($|[\s_-])/.test(cls)) return false;
+				return null;
+			}
+			// No declared theme: measure what is actually painted behind the
+			// overlay. Only full-bleed surfaces count, otherwise a white card in a
+			// dark app would flip the palette.
+			function paintedSurfaceLum() {
+				try {
+					const seen = [];
+					function push(node, fullBleed) {
+						if (!node || seen.indexOf(node) >= 0) return;
+						if (fullBleed) {
+							let r = null;
+							try { r = node.getBoundingClientRect(); } catch (e) { r = null; }
+							if (!r || r.width < 1 || r.height < 1) return;
+							const vw = typeof window !== "undefined" ? window.innerWidth : 0;
+							const vh = typeof window !== "undefined" ? window.innerHeight : 0;
+							if (vw > 0 && vh > 0 && (r.width < vw * 0.9 || r.height < vh * 0.9)) return;
+						}
+						seen.push(node);
+					}
+					push(document.body, false);
+					if (document.body && document.body.children) {
+						for (let i = 0; i < document.body.children.length && i < 8; i++) push(document.body.children[i], true);
+					}
+					push(document.documentElement, false);
+					for (let i = 0; i < seen.length; i++) {
+						const rgba = parseColorValue(getComputedStyle(seen[i]).backgroundColor);
+						if (!rgba || rgba[3] < 0.5) continue;
+						return colorLum(rgba);
+					}
+				} catch (e) { /* fall through */ }
+				return null;
+			}
+			function surfaceIsLight() {
+				try {
+					if (typeof document === "undefined") return false;
+					let signal = surfaceThemeSignal(document.documentElement);
+					if (signal === null) signal = surfaceThemeSignal(document.body);
+					if (signal !== null) return signal;
+					const painted = paintedSurfaceLum();
+					if (painted !== null) return painted > 0.5;
+					const mq = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+					return !!(mq && mq.matches);
+				} catch (e) {
+					// The dark ramps are the shipped look: never fail into light.
+					return false;
+				}
+			}
+			// Re-reads the surface when the host flips its theme, so the palette
+			// follows a live theme switch instead of latching at mount.
+			function useLightSurface() {
+				const [light, setLight] = useState(function () { return surfaceIsLight(); });
+				useEffect(function () {
+					let alive = true;
+					let pending = 0;
+					function sync() {
+						pending = 0;
+						if (!alive) return;
+						let next = false;
+						try { next = surfaceIsLight(); } catch (e) { next = false; }
+						setLight(function (prev) { return prev === next ? prev : next; });
+					}
+					function schedule() {
+						if (pending) return;
+						try {
+							pending = typeof requestAnimationFrame === "function" ? requestAnimationFrame(sync) : setTimeout(sync, 16);
+						} catch (e) { pending = 0; }
+					}
+					let observer = null;
+					try {
+						observer = new MutationObserver(schedule);
+						const opts = { attributes: true, attributeFilter: ["class", "data-theme", "data-color-mode", "data-mode", "data-appearance", "data-scheme", "style"] };
+						observer.observe(document.documentElement, opts);
+						if (document.body) observer.observe(document.body, opts);
+					} catch (e) { observer = null; }
+					let mq = null;
+					function onScheme() { schedule(); }
+					try {
+						mq = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+						if (mq && mq.addEventListener) mq.addEventListener("change", onScheme);
+						else if (mq && mq.addListener) mq.addListener(onScheme);
+					} catch (e) { mq = null; }
+					sync();
+					return function () {
+						alive = false;
+						try { if (pending && typeof cancelAnimationFrame === "function") cancelAnimationFrame(pending); } catch (e) { /* noop */ }
+						try { if (observer) observer.disconnect(); } catch (e) { /* noop */ }
+						try {
+							if (mq && mq.removeEventListener) mq.removeEventListener("change", onScheme);
+							else if (mq && mq.removeListener) mq.removeListener(onScheme);
+						} catch (e) { /* noop */ }
+					};
+				}, []);
+				return light;
+			}
+
 			function senderOrigin() {
 				try {
 					const nodes = document.querySelectorAll('button[aria-label], [role="button"][aria-label]');
@@ -1901,8 +2313,14 @@ function returnPath(from, ring) {
 				const thickness = props.thickness;
 				const lapMs = props.lapMs;
 				const startX = props.startX;
+				// Corner radius of the host window, measured upstream. Without it the
+				// track turns through a half-width arc and the strip gets clipped at
+				// the corners.
+				const corner = props.corner > 0 ? props.corner : HOST_CORNER_FALLBACK;
 				const count = Math.max(1, Math.min(MAX_COMETS, props.count | 0));
 				const theme = props.theme || THEMES.deepseek;
+				// The window surface flips the palette treatment, not the palette.
+				const lightSurface = props.light === true;
 				// One palette per band: band i belongs to one conversation, and each
 				// conversation may be running a different model.
 				const bandList = props.themes && props.themes.length ? props.themes : null;
@@ -2012,7 +2430,7 @@ function returnPath(from, ring) {
 						return;
 					}
 					let track = null;
-					try { track = buildTrack(w, hgt, thickness / 2, startX); } catch (e) { track = null; }
+					try { track = buildTrack(w, hgt, thickness / 2, startX, corner); } catch (e) { track = null; }
 					if (!track) return;
 					// Where the bottom-left corner sits on the track. A new band waits
 					// until its own slot reaches this phase, so it appears exactly on the
@@ -2073,6 +2491,7 @@ function returnPath(from, ring) {
 						if (n && n.ribbon && n.ribbon.isConnected !== false) return n;
 						n = {
 							ribbon: g.querySelector('[data-r="ribbon"]'),
+							outline: g.querySelector('[data-r="outline"]'),
 							edgeA: g.querySelector('[data-r="edge-a"]'),
 							edgeB: g.querySelector('[data-r="edge-b"]'),
 							head: g.querySelector('[data-r="head"]'),
@@ -2377,6 +2796,7 @@ function returnPath(from, ring) {
 							if (gg) gg.style.opacity = age < FADE_OUT_MS ? (age / FADE_OUT_MS).toFixed(3) : "";
 						}
 							nd.ribbon.setAttribute("d", d);
+							if (nd.outline) nd.outline.setAttribute("d", d);
 							if (nd.edgeA && d) nd.edgeA.setAttribute("d", d);
 							if (nd.edgeB && d) nd.edgeB.setAttribute("d", d);
 
@@ -2393,11 +2813,24 @@ function returnPath(from, ring) {
 								nd.glow.setAttribute("cy", hy);
 								nd.glow.setAttribute("r", (halfNow * 3.6 * (0.55 + 0.45 * bu)).toFixed(2));
 							}
+							// One transform instead of four coordinates. The ramp is a unit
+							// vector (0,0)->(1,0) mapped onto tail->head; rewriting x1/y1/x2/y2
+							// every frame was the loop's busiest attribute mutator. A quantised
+							// transform is a single write and is skipped outright while the band
+							// is parked (reversal easing, or a frozen capture).
 							if (nd.grad) {
-								nd.grad.setAttribute("x1", tailPt.x.toFixed(1));
-								nd.grad.setAttribute("y1", tailPt.y.toFixed(1));
-								nd.grad.setAttribute("x2", hx);
-								nd.grad.setAttribute("y2", hy);
+								const gdx = headPt.x - tailPt.x;
+								const gdy = headPt.y - tailPt.y;
+								const glen = Math.hypot(gdx, gdy) || 1;
+								const gt = Math.round(tailPt.x * 4) / 4;
+								const gty = Math.round(tailPt.y * 4) / 4;
+								const ga = Math.round(Math.atan2(gdy, gdx) * 360 / (Math.PI * 2) * 4) / 4;
+								const gl = Math.round(glen * 10) / 10;
+								const gkey = gt + "," + gty + "," + ga + "," + gl;
+								if (nd.gradKey !== gkey) {
+									nd.gradKey = gkey;
+									nd.grad.setAttribute("gradientTransform", "translate(" + gt + " " + gty + ") rotate(" + ga + ") scale(" + gl + " 1)");
+								}
 							}
 							if (headsSink) {
 								const memo = headsSink.current || (headsSink.current = {});
@@ -2504,17 +2937,24 @@ function returnPath(from, ring) {
 					const bt = (bandList && bandList[i]) || theme;
 					const gradId = "dsh-marquee-grad-" + i;
 					const glowId = "dsh-marquee-glow-" + i;
+					// On a light surface the same palette is re-ramped around its
+					// brand tone and outlined; the dark ramps below are untouched.
+					const ramp = lightSurface ? lightStopsOf(bt) : bt.stops;
+					const glowRamp = lightSurface ? lightGlowOf(bt) : bt.glow;
+					const outline = lightSurface ? lightOutlineOf(bt, thickness) : null;
 					const kids = [];
 					kids.push(h("linearGradient", {
 						key: "grad",
 						id: gradId,
 						gradientUnits: "userSpaceOnUse",
+						// Unit ramp: the frame loop maps it onto tail->head with one
+						// `gradientTransform` (see the band loop).
 						x1: "0", y1: "0", x2: "1", y2: "0",
-					}, bt.stops.map((s, k) => h("stop", { key: k, offset: s[0], stopColor: s[1] }))));
+					}, ramp.map((s, k) => h("stop", { key: k, offset: s[0], stopColor: s[1] }))));
 					kids.push(h("radialGradient", {
 						key: "glowdef",
 						id: glowId,
-					}, bt.glow.map((s, k) => h("stop", { key: k, offset: s[0], stopColor: s[1] }))));
+					}, glowRamp.map((s, k) => h("stop", { key: k, offset: s[0], stopColor: s[1] }))));
 					kids.push(h("circle", {
 						key: "glow",
 						"data-r": "glow",
@@ -2527,6 +2967,21 @@ function returnPath(from, ring) {
 						"data-r": "ribbon",
 						d: "",
 						fill: "url(#" + gradId + ")",
+					}));
+					// Always present, invisible while the surface is dark: the frame
+					// loop writes the same outline geometry into it every frame, so a
+					// live theme flip never has to restart the loop (which would snap
+					// every band back to the corner).
+					kids.push(h("path", {
+						key: "outline",
+						"data-r": "outline",
+						d: "",
+						fill: "none",
+						stroke: outline ? outline.color : "#000000",
+						strokeWidth: String(outline ? outline.width : Math.max(1, thickness * 0.16)),
+						strokeOpacity: outline ? String(outline.opacity) : "0",
+						strokeLinejoin: "round",
+						strokeLinecap: "round",
 					}));
 					if (edgeGlow) {
 						kids.push(h("path", {
@@ -2586,7 +3041,7 @@ function returnPath(from, ring) {
 						key: "head",
 						"data-r": "head",
 						cx: "0", cy: "0", r: String(half),
-						fill: bt.core,
+						fill: lightSurface ? lightHeadOf(bt) : bt.core,
 					}));
 					if (bt.particles) {
 						const dots = [];
@@ -2676,6 +3131,7 @@ function returnPath(from, ring) {
 				const ghosts = props.ghosts || [];
 				const thickness = props.thickness;
 				const trail = props.trail;
+				const lightSurface = props.light === true;
 				const maskUrl = props.maskUrl || MASK_ID;
 				const baseHalf = Math.max(0.5, thickness / 2);
 				const groupRefs = useRef([]);
@@ -2769,6 +3225,8 @@ function returnPath(from, ring) {
 					const g = ghosts[i];
 					const theme = (g && g.theme) || THEMES.deepseek;
 					const gradId = "dsh-marquee-gg-" + i;
+					const ramp = lightSurface ? lightStopsOf(theme) : theme.stops;
+					const headColor = lightSurface ? lightHeadOf(theme) : theme.core;
 					groups.push(h("g", {
 						key: g.id,
 						className: "dsh-marquee-ghost",
@@ -2782,14 +3240,13 @@ function returnPath(from, ring) {
 							id: gradId,
 							gradientUnits: "userSpaceOnUse",
 							x1: "0", y1: "0", x2: "1", y2: "0",
-						}, theme.stops.map((s, k) => h("stop", { key: k, offset: s[0], stopColor: s[1] }))),
+						}, ramp.map((s, k) => h("stop", { key: k, offset: s[0], stopColor: s[1] }))),
 						h("circle", {
 							key: "glow",
 							"data-g": "glow",
 							cx: "0", cy: "0", r: "0",
-							fill: theme.core,
+							fill: headColor,
 							opacity: "0",
-							style: { filter: "blur(5px)" },
 						}),
 						h("path", {
 							key: "ribbon",
@@ -2802,7 +3259,7 @@ function returnPath(from, ring) {
 							key: "head",
 							"data-g": "head",
 							cx: "0", cy: "0", r: String(baseHalf),
-							fill: theme.core,
+							fill: headColor,
 							opacity: "0",
 						})
 					));
@@ -2823,173 +3280,167 @@ function returnPath(from, ring) {
 				};
 			}
 
-			function BooleanRow(props) {
-				const id = props.id;
-				const label = props.label;
-				const checked = props.checked === true;
-				const disabled = props.disabled === true;
-				const onToggle = (next) => {
-					try { props.onChange(next === true); } catch (e) { /* noop */ }
-				};
-				let control = null;
-				if (SwitchControl) {
-					control = h(SwitchControl, {
-						checked: checked,
-						disabled: disabled,
-						label: label,
-						onChange: onToggle,
-					});
-				} else {
-					control = h("button", {
-						type: "button",
-						disabled: disabled,
-						onClick: () => onToggle(!checked),
-						style: {
-							border: "1px solid rgba(255,255,255,0.24)",
-							borderRadius: "6px",
-							background: checked ? "rgba(90,150,255,0.35)" : "transparent",
-							color: "inherit",
-							font: "inherit",
-							padding: "3px 10px",
-							cursor: disabled ? "default" : "pointer",
-						},
-					}, checked ? "开" : "关");
-				}
-				return h("div", { className: CLS.field },
-					h("div", { className: CLS.head },
-						h("div", { className: CLS.labelGroup },
-							h("label", { className: CLS.label, htmlFor: id }, label)
-						),
-						props.overridden ? h("span", { className: CLS.badges },
-							h("button", {
-								type: "button",
-								className: CLS.reset,
-								disabled: disabled,
-								onClick: () => { try { props.onReset(); } catch (e) { /* noop */ } },
-							}, props.resetLabel || "重置")
-						) : null
-					),
-					control,
-					props.hint ? h("p", { className: CLS.hint }, props.hint) : null
-				);
-			}
+			// The panel draws its own frame and its own rows.
+			//
+			// The host primitives render one row per field, but their frame only
+			// ever puts Save in the footer, and every value field carries a little
+			// "reset" link inside its own row header. On this page that read as
+			// buttons scattered through the form, so instead: one skeleton for
+			// every row (title line, control, hint) and a single reset in the
+			// action row beside Save, which clears every override at once.
+			const SETTING_KEYS = ["trailLength", "thickness", "sweep", "speed", "modelColor", "edgeGlow", "theme", "unknownTheme"];
 
 			function MarqueeSettings(props) {
 				const t = useUiStrings();
 				if (props.view === "summary") return null;
 				const state = props.useMarqueeForm((value) => value);
 				if (!state) return null;
-				const disabled = state.writable === false;
-				const labels = {
-					unavailable: t("unavailable"),
-					readOnly: t("readOnly"),
-					saveFailed: t("saveFailed"),
-					save: t("save"),
-					saving: t("saving"),
-				};
-				const boolRow = (name, label, hint) => {
-					const field = state[name] || { text: "", overridden: false };
-					const checked = String(field.text === void 0 ? "" : field.text) === "true";
-					return h(BooleanRow, {
-						key: name,
-						id: name,
-						label: label,
-						hint: hint,
-						checked: checked,
-						disabled: disabled,
-						overridden: field.overridden === true,
-						resetLabel: t("reset"),
-						onChange: (next) => props.edit(name, next ? "true" : "false"),
-						onReset: () => props.resetField(name),
-					});
-				};
-				const themeOptions = THEME_ORDER.map(function (k) {
-					const t = themeByKey(k) || {};
-					return { value: k, label: t.label || k };
+				// Leaving the page discards staged drafts, exactly like the host
+				// frame does; without this a half-typed number would survive a
+				// navigation and be written by the next save.
+				const discardRef = useRef(props.discard);
+				discardRef.current = props.discard;
+				useEffect(() => () => {
+					try { discardRef.current(); } catch (e) { /* noop */ }
+				}, []);
+
+				if (state.available === false) {
+					return h("p", { className: CLS.unavailable, role: "status" }, t("unavailable"));
+				}
+
+				const writable = state.writable !== false;
+				const saving = state.saving === true;
+				const invalid = state.invalid === true;
+				// Optimistic defaults: the harness that renders this panel for the
+				// i18n check passes a partial state object, and a missing flag must
+				// not grey out the whole form.
+				const dirty = state.dirty !== false;
+				const failed = state.failed === true;
+				const overriddenKeys = SETTING_KEYS.filter((name) => {
+					const field = state[name];
+					return !!(field && field.overridden === true);
 				});
-				// A dropdown that rides the same staged form as the numeric rows.
+
+				const textOf = (name, fallback) => {
+					const field = state[name];
+					const raw = field ? (field.text !== void 0 ? field.text : field.value) : void 0;
+					if (raw === void 0 || raw === null || raw === "") return fallback;
+					return String(raw);
+				};
+				const boolOf = (name, fallback) => {
+					const raw = textOf(name, fallback ? "true" : "false");
+					return raw === "true" || raw === "1" || raw === "on";
+				};
+
+				// The one row skeleton: title line (with the override marker), the
+				// control, the hint. Nothing in this panel draws anything else.
+				const row = (name, label, hint, control) => h("div", { key: name, className: CLS.field },
+					h("div", { className: CLS.head },
+						h("div", { className: CLS.labelGroup },
+							h("label", { className: CLS.label, htmlFor: "dsh-marquee-" + name }, label)),
+						overriddenKeys.indexOf(name) >= 0
+							? h("span", {
+								className: CLS.badges,
+								style: { fontSize: "12px", lineHeight: "1.5", color: "var(--dsw-alias-label-tertiary)" },
+							}, t("overridden"))
+							: null),
+					control,
+					hint ? h("p", { className: CLS.hint }, hint) : null);
+
+				const numberRow = (name, label, hint) => row(name, label, hint,
+					h("input", {
+						id: "dsh-marquee-" + name,
+						className: CLS.input,
+						type: "text",
+						inputMode: "decimal",
+						autoComplete: "off",
+						spellCheck: false,
+						value: textOf(name, ""),
+						disabled: !writable,
+						onChange: (e) => { try { props.edit(name, e.target.value); } catch (err) { /* noop */ } },
+					}));
+
+				const switchRow = (name, label, hint) => {
+					const checked = boolOf(name, true);
+					const onToggle = (next) => {
+						try { props.edit(name, next === true ? "true" : "false"); } catch (e) { /* noop */ }
+					};
+					let control = null;
+					if (SwitchControl) {
+						control = h(SwitchControl, {
+							checked: checked,
+							disabled: !writable,
+							label: label,
+							onChange: onToggle,
+						});
+					} else {
+						control = h("button", {
+							type: "button",
+							disabled: !writable,
+							onClick: () => onToggle(!checked),
+							style: {
+								border: "1px solid var(--dsw-alias-border-l4)",
+								borderRadius: "var(--dsw-radius-md)",
+								background: checked ? "var(--dsw-alias-bg-layer-3)" : "transparent",
+								color: "inherit",
+								font: "inherit",
+								fontSize: "13px",
+								padding: "4px 12px",
+								cursor: writable ? "pointer" : "default",
+							},
+						}, checked ? "✓" : "");
+					}
+					return row(name, label, hint, h("div", { style: { display: "flex", alignItems: "center" } }, control));
+				};
+
+				const themeOptions = THEME_ORDER.map(function (k) {
+					const theme = themeByKey(k) || {};
+					return { value: k, label: theme.label || k };
+				});
 				const selectRow = (name, label) => {
-					const field = state[name] || { text: "", overridden: false };
-					const current = String(field.text == null ? "" : field.text) || "deepseek";
-					return h("div", { key: name, className: CLS.field },
-						h("div", { className: CLS.head },
-							h("div", { className: CLS.labelGroup },
-								h("label", { className: CLS.label, htmlFor: "dsh-marquee-" + name }, label)),
-							field.overridden === true ? h("span", { className: CLS.badges },
-								h("button", {
-									type: "button",
-									className: CLS.reset,
-									disabled: disabled,
-									onClick: () => { try { props.resetField(name); } catch (e) { /* noop */ } },
-								}, t("reset"))) : null),
+					const current = textOf(name, name === "theme" ? "deepseek" : "prism");
+					return row(name, label, null,
 						h("select", {
 							id: "dsh-marquee-" + name,
 							className: CLS.input,
 							value: current,
-							disabled: disabled,
+							disabled: !writable,
+							style: { paddingRight: "24px" },
 							onChange: (e) => { try { props.edit(name, e.target.value); } catch (err) { /* noop */ } },
 						}, themeOptions.map((o) => h("option", { key: o.value, value: o.value }, o.label))));
 				};
-				const modelColorOff = String((state.modelColor || {}).text) === "false";
-				return h(
-					SettingsForm,
-					{ labels: labels, state: state, onSave: props.save, onDiscard: props.discard },
-					h(SettingsValueField, {
-						id: "trailLength",
-						label: t("trail"),
-						hint: t("trailHint"),
-						overriddenLabel: t("overridden"),
-						resetLabel: t("reset"),
-						invalidLabel: t("invalid"),
-						numeric: true,
-						disabled: disabled,
-						...state.trailLength,
-						onEdit: (text) => props.edit("trailLength", text),
-						onReset: () => props.resetField("trailLength"),
-					}),
-					h(SettingsValueField, {
-						id: "thickness",
-						label: t("thickness"),
-						hint: t("thicknessHint"),
-						overriddenLabel: t("overridden"),
-						resetLabel: t("reset"),
-						invalidLabel: t("invalid"),
-						numeric: true,
-						disabled: disabled,
-						...state.thickness,
-						onEdit: (text) => props.edit("thickness", text),
-						onReset: () => props.resetField("thickness"),
-					}),
-					h(SettingsValueField, {
-						id: "sweep",
-						label: t("sweep"),
-						hint: t("sweepHint"),
-						overriddenLabel: t("overridden"),
-						resetLabel: t("reset"),
-						invalidLabel: t("invalid"),
-						numeric: true,
-						disabled: disabled,
-						...state.sweep,
-						onEdit: (text) => props.edit("sweep", text),
-						onReset: () => props.resetField("sweep"),
-					}),
-					h(SettingsValueField, {
-						id: "speed",
-						label: t("speed"),
-						hint: t("speedHint"),
-						overriddenLabel: t("overridden"),
-						resetLabel: t("reset"),
-						invalidLabel: t("invalid"),
-						numeric: true,
-						disabled: disabled,
-						...state.speed,
-						onEdit: (text) => props.edit("speed", text),
-						onReset: () => props.resetField("speed"),
-					}),
-					boolRow("modelColor", t("modelColor")),
+
+				const modelColorOff = !boolOf("modelColor", true);
+
+				return h("div", { className: CLS.form },
+					!writable ? h("p", { className: CLS.readOnly, role: "status" }, t("readOnly")) : null,
+					numberRow("trailLength", t("trail"), t("trailHint")),
+					numberRow("thickness", t("thickness"), t("thicknessHint")),
+					numberRow("sweep", t("sweep"), t("sweepHint")),
+					numberRow("speed", t("speed"), t("speedHint")),
+					switchRow("modelColor", t("modelColor")),
+					switchRow("edgeGlow", t("edgeGlow")),
 					modelColorOff ? selectRow("theme", t("theme")) : null,
 					selectRow("unknownTheme", t("unknownTheme")),
-					boolRow("edgeGlow", t("edgeGlow"))
+					h("div", { className: CLS.footer },
+						failed ? h("p", { className: CLS.failed, role: "status" }, t("saveFailed")) : null,
+						h("button", {
+							type: "button",
+							className: "dsh-marquee-reset",
+							disabled: !writable || saving || overriddenKeys.length === 0,
+							title: t("resetAllHint"),
+							onClick: () => {
+								for (let i = 0; i < overriddenKeys.length; i++) {
+									try { props.resetField(overriddenKeys[i]); } catch (e) { /* noop */ }
+								}
+							},
+						}, t("reset")),
+						h("button", {
+							type: "button",
+							className: CLS.save,
+							disabled: !writable || !dirty || invalid || saving,
+							onClick: () => { try { props.save(); } catch (e) { /* noop */ } },
+						}, saving ? t("saving") : t("save")))
 				);
 			}
 
@@ -3026,17 +3477,26 @@ function returnPath(from, ring) {
 				const thicknessCfg = useForm ? useForm(selectThickness) : null;
 				const speedCfg = useForm ? useForm(selectSpeed) : null;
 				const sweepCfg = useForm ? useForm(selectSweep) : null;
-				const edgeGlowCfg = useForm ? useForm(selectEdgeGlow) : null;
 				const modelColorCfg = useForm ? useForm(selectModelColor) : null;
 				const themeCfg = useForm ? useForm(selectTheme) : null;
 				const unknownThemeCfg = useForm ? useForm(selectUnknownTheme) : null;
 				const trail = clampNumber(trailCfg, TRAIL_MIN, TRAIL_MAX, DEFAULT_TRAIL);
 				const thickness = clampNumber(thicknessCfg, THICKNESS_MIN, THICKNESS_MAX, DEFAULT_THICKNESS);
-				const speedMul = clampNumber(speedCfg, SPEED_MIN, SPEED_MAX, DEFAULT_SPEED);
+				// Legacy numbers (1.6-scale) stay parseable by the schema, so the
+				// dial value has to be mapped before it reaches the geometry.
+				const speedDial = clampNumber(speedCfg, SPEED_MIN, SPEED_LEGACY_MAX, DEFAULT_SPEED);
+				const speedMul = speedDial > SPEED_MAX ? speedDial / SPEED_REFERENCE : speedDial;
 				// Live setting: the frame loop eases towards this, so changing it never
 				// snaps a band to a new position.
 				setSweepAmp(clampNumber(sweepCfg, SWEEP_MIN, SWEEP_MAX, DEFAULT_SWEEP));
+				// The halo is what makes the band read as light rather than as a
+				// painted stripe, so it defaults to on; the switch stays for the
+				// cases where the glow fights a very bright light surface.
+				const edgeGlowCfg = useForm ? useForm(selectEdgeGlow) : null;
 				const edgeGlow = edgeGlowCfg === null || edgeGlowCfg === void 0 ? true : edgeGlowCfg === true;
+				// Light window surface: same palette, different treatment. Re-read on
+				// every host theme flip instead of latching at mount.
+				const lightSurface = useLightSurface();
 				const modelColor = modelColorCfg === null || modelColorCfg === void 0 ? true : modelColorCfg === true;
 				// When automatic colouring is off the whole plugin uses one palette the
 				// user picked; "unknownTheme" is the fallback for models we cannot name.
@@ -3215,6 +3675,21 @@ function returnPath(from, ring) {
 								"\nb0 " + (DIAG.b0 || "-") +
 								"\nspd " + spdTxt + " dt " + (DIAG.dt === void 0 ? "-" : DIAG.dt.toFixed(1)) + " lap " + (DIAG.lap || "-") +
 								"\nframe " + DIAG.frames + " err " + (DIAG.err || "-") +
+								"\nanc " + (function () {
+									try {
+										const list = [];
+										let el = rootRef.current;
+										let i = 0;
+										while (el && i < 8) {
+											const r = el.getBoundingClientRect();
+											const c2 = getComputedStyle(el);
+											list.push(i + ":" + String(c2.borderTopLeftRadius || "-").replace("px", "") + "@" + Math.round(r.width) + "x" + Math.round(r.height));
+											el = el.parentElement;
+											i++;
+										}
+										return list.join(" | ");
+									} catch (e) { return "err"; }
+								})() +
 								"\ndom " + (function () {
 									try {
 										const d = scanComposerModel();
@@ -3239,13 +3714,15 @@ function returnPath(from, ring) {
 						let r = null;
 						try { r = node.getBoundingClientRect(); } catch (e) { r = null; }
 						if (!r || !(r.width > 8) || !(r.height > 8)) return;
+						const radius = hostCornerRadius(node);
 						setBox((prev) => {
 							if (prev &&
 								Math.abs(prev.left - r.left) < 0.5 &&
 								Math.abs(prev.top - r.top) < 0.5 &&
 								Math.abs(prev.width - r.width) < 0.5 &&
-								Math.abs(prev.height - r.height) < 0.5) return prev;
-							return { left: r.left, top: r.top, width: r.width, height: r.height };
+								Math.abs(prev.height - r.height) < 0.5 &&
+								prev.radius === radius) return prev;
+							return { left: r.left, top: r.top, width: r.width, height: r.height, radius: radius };
 						});
 					}
 					measure();
@@ -3547,7 +4024,7 @@ function returnPath(from, ring) {
 				// off-track moves are derived from the band's own local ring speed
 				// (TRANSIT_REL), so a faster lap scales those up with it instead of
 				// being throttled by an absolute ceiling.
-				const lapMs = Math.max(1600, Math.min(13000, (perimeter * 0.95) / Math.max(SPEED_MIN, speedMul)));
+				const lapMs = Math.max(1600, Math.min(13000, (perimeter * 0.95) / Math.max(SPEED_MIN * SPEED_REFERENCE, speedMul * SPEED_REFERENCE)));
 
 				const clip = "circle(" + revealR + "px at " + ox + "px " + oy + "px)";
 				const style = {
@@ -3575,6 +4052,8 @@ function returnPath(from, ring) {
 				}, "win " + fallbackW + "x" + fallbackH +
 					"  box L" + Math.round(boxLeft) + " T" + Math.round(boxTop) +
 					" " + Math.round(boxW) + "x" + Math.round(boxH) +
+					"  corner=" + (box && box.radius ? box.radius : 0) +
+					"  light=" + (lightSurface ? "on" : "off") +
 					"  t=" + thickness + " trail=" + trail +
 					"  n=" + liveCount + " reveal=" + reveal.toFixed(2) +
 					"  dir=" + (direction > 0 ? "cw" : "ccw") + " reply=" + replyCount +
@@ -3598,6 +4077,7 @@ function returnPath(from, ring) {
 						h(CometField, {
 							width: boxW,
 							height: boxH,
+							corner: box && box.radius ? box.radius : 0,
 							trail: trail,
 							thickness: thickness,
 							lapMs: lapMs,
@@ -3607,6 +4087,7 @@ function returnPath(from, ring) {
 							theme: theme,
 							themes: bandThemes,
 							edgeGlow: edgeGlow,
+							light: lightSurface,
 							direction: direction,
 							active: visible || hold,
 							headsSink: headsRef,
@@ -3623,6 +4104,7 @@ function returnPath(from, ring) {
 							trail: trail,
 							speed: Math.max(0.2, (2 * (boxW + boxH)) / Math.max(1, lapMs)),
 							maskUrl: MASK_ID,
+							light: lightSurface,
 							onDone: (ids) => {
 								setGhosts((list) => list.filter((g) => ids.indexOf(g.id) === -1));
 							},
@@ -3657,8 +4139,12 @@ function returnPath(from, ring) {
 							settingsNumberField("thickness"),
 							settingsNumberField("speed"),
 				settingsNumberField("sweep"),
-							settingsBooleanField("edgeGlow"),
 							settingsBooleanField("modelColor"),
+							// Every field the panel shows has to be declared here: the
+							// model is a whitelist, so a row whose key is missing reads
+							// an empty value and silently drops the user's edit (that is
+							// what happened to the edge glow switch when it came back).
+							settingsBooleanField("edgeGlow"),
 							settingsText("theme"),
 							settingsText("unknownTheme"),
 						]);
@@ -3668,8 +4154,8 @@ function returnPath(from, ring) {
 							thickness: form.field("thickness"),
 							speed: form.field("speed"),
 							sweep: form.field("sweep"),
-							edgeGlow: form.field("edgeGlow"),
 							modelColor: form.field("modelColor"),
+							edgeGlow: form.field("edgeGlow"),
 							theme: form.field("theme"),
 							unknownTheme: form.field("unknownTheme"),
 						}));
@@ -3760,6 +4246,23 @@ buildTrack: buildTrack,
 				taper: taper,
 				themeForModel: themeForModel,
 				THEMES: THEMES,
+				// Light-surface treatment: exported so offline checks can assert the
+				// ramp, the contrast floor and the outline without a browser.
+				parseColorValue: parseColorValue,
+				colorLum: colorLum,
+				contrastOnWhite: contrastOnWhite,
+				mixColor: mixColor,
+				themeDeepColor: themeDeepColor,
+				lightDeepColor: lightDeepColor,
+				lightStopsOf: lightStopsOf,
+				lightGlowOf: lightGlowOf,
+				lightHeadOf: lightHeadOf,
+				lightOutlineOf: lightOutlineOf,
+				surfaceThemeSignal: surfaceThemeSignal,
+				surfaceIsLight: surfaceIsLight,
+				hostCornerRadius: hostCornerRadius,
+				HOST_CORNER_FALLBACK: HOST_CORNER_FALLBACK,
+				lightStopsFor: function (key) { return lightStopsOf(THEMES[key] || THEMES.unknown); },
 				flightPath: flightPath,
 				polyRibbon: polyRibbon,
 			throwPath: throwPath, redressTail: redressTail,

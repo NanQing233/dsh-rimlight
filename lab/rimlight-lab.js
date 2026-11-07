@@ -11,6 +11,11 @@
 	"use strict";
 
 	var M = window.__MARQUEE__ && window.__MARQUEE__.__debug;
+	// The page owns the dictionaries (see the language layer in the HTML); a
+	// script that builds text of its own reads them through this.
+	function L(key) {
+		return window.__LAB_I18N__ ? window.__LAB_I18N__.t(key) : key;
+	}
 	var out = document.getElementById("readout");
 	// Any stray throw (a click handler, a rebuild) has to be visible, otherwise a
 	// headless screenshot just shows a blank stage and says nothing.
@@ -48,11 +53,23 @@
 	var ghostHost = el("g", {});
 	ghostSvg.appendChild(ghostHost);
 
+	var cornerOverride = null;
+	// The radius the track actually turned with (22 by default = the mock
+	// window's own corner). Printed in the readout so a corner that looks off
+	// can be told apart from a radius that resolved wrong.
+	var winRadius = 0;
 	var W = 0;
 	var H = 0;
 	var track = null;
 	var lapMs = 4200;
-	var labSpeed = 1.6;
+	// The dial the panel shows is quoted against the shipped pace: 1 = the
+	// default band speed. Geometry still works in absolute multipliers, so the
+	// number from the slider is multiplied by this reference. That keeps every
+	// lap time identical to the pre-rebase build.
+	var SPEED_REFERENCE = 1.6;
+	var SPEED_MIN = 0.19;
+	var SPEED_MAX = 1.88;
+	var labSpeed = 1;
 	var lastPerimeter = 0;
 	function styleProbe() {
 		try {
@@ -75,7 +92,7 @@
 
 	function recalcLap() {
 		if (!lastPerimeter) return;
-		lapMs = Math.max(1600, Math.min(13000, (lastPerimeter * 0.95) / labSpeed));
+		lapMs = Math.max(1600, Math.min(13000, (lastPerimeter * 0.95) / (labSpeed * SPEED_REFERENCE)));
 	}
 
 	function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -100,6 +117,7 @@
 	};
 	var orbit = { mode: "off" };
 	var pendingGhost = 0;
+	var pendingRetire = null;
 	// Diagnostics: how many ghosts were spawned and where the first one is in
 	// its hop. Without these the readout cannot tell "never spawned" from
 	// "already finished".
@@ -138,9 +156,16 @@ var settles = {};
 	// from a different vendor palette, exactly like the plugin does per session.
 	var bandOrder = ["deepseek", "kimi", "nvidia", "qwen"];
 	var multi = false;
+	// Palette chosen in each band's own select. Kept outside `state` so a
+	// rebuild (buildBands) cannot wipe the picks.
+	var bandKeys = [];
+	function bandKey(i) {
+		var k = bandKeys[i];
+		return (k && M.THEMES[k]) ? k : bandOrder[i % bandOrder.length];
+	}
 	function bandTheme(i) {
 		if (!multi) return theme();
-		return M.THEMES[bandOrder[i % bandOrder.length]] || theme();
+		return M.THEMES[bandKey(i)] || theme();
 	}
 
 	function wrap1(v) { return ((v % 1) + 1) % 1; }
@@ -161,6 +186,20 @@ var settles = {};
 		births = [];
 		grabs = [];
 		catches = [];
+		// A band that already left (a finished conversation, a manual stop) is
+		// marked `gone` and its group is faded out; drawing it again means
+		// reviving that node, otherwise "开始思考" after a stop would set the mode
+		// but paint nothing until the next rebuild.
+		for (var k = 0; k < bandNodes.length; k++) {
+			var nd = bandNodes[k];
+			if (!nd || !nd.gone) continue;
+			delete nd.gone;
+			nd.gradKey = "";
+			if (nd.g) {
+				nd.g.style.opacity = "";
+				nd.g.style.transition = "";
+			}
+		}
 		// Put the clock on the corner first: band 0 is the master, so it appears at
 		// the corner at once instead of waiting up to a whole lap for its slot.
 		if (cornerPh !== null && M.sweepInv) state.p = wrap1(M.sweepInv(cornerPh));
@@ -214,12 +253,18 @@ var settles = {};
 		var sendRect = send.getBoundingClientRect();
 		var startX = clamp(sendRect.left + sendRect.width / 2 - r.left, 40, W - 40);
 		lastSend = { x: startX, y: H - h };
-		track = M.buildTrack(W, H, h, startX);
+		// The mock window is drawn with a 22px corner, so the band has to turn
+		// with that same corner instead of cutting across it.
+		var rad = 0;
+		try { rad = parseFloat(getComputedStyle(frame).borderTopLeftRadius) || 0; } catch (e) { rad = 0; }
+		if (cornerOverride !== null) rad = cornerOverride;
+		winRadius = rad;
+		track = M.buildTrack(W, H, h, startX, rad);
 		var perimeter = 2 * (W + H) - 8 * h;
-		// Same default the plugin ships: speed 1.6 (a lap is about 2.6s on a
-		// 1065x1160 frame), which is also what nobody has to configure.
+		// Same default the plugin ships: dial 1 (the pace the first release
+		// printed as 1.6), which is also what nobody has to configure.
 		lastPerimeter = perimeter;
-		lapMs = Math.max(1600, Math.min(13000, (perimeter * 0.95) / labSpeed));
+		lapMs = Math.max(1600, Math.min(13000, (perimeter * 0.95) / (labSpeed * SPEED_REFERENCE)));
 		// Phase of the bottom-left corner: that is where bands are born now.
 		var cxL = h * 1.6, cyL = H - h * 1.6, bestPh = 0, bestCorner = Infinity;
 		for (var ck = 0; ck < 720; ck++) {
@@ -242,21 +287,124 @@ var settles = {};
 		return (Number(v) * 100) + "%";
 	}
 
+	// --- light-surface adaptation ---------------------------------------
+	// On a light window surface every palette's near-white head sits at about
+	// 1.05 contrast (white on white). When the surface is light we push the head
+	// to the palette's own brand tone and outline the strip, so it keeps its
+	// identity and an edge on either background.
+	function isLight() {
+		try { return document.documentElement.getAttribute("data-theme") === "light"; }
+		catch (e) { return false; }
+	}
+	// Same rule as the plugin: the brand tone is the darkest opaque stop. A fixed
+	// luminance threshold would drop MiMo's pale yellow (lum 0.85) into the slate
+	// fallback; only "essentially white" palettes (Prism) take the fallback.
+	function stopRgba(c) {
+		var s = String(c == null ? "" : c).trim();
+		if (s.charAt(0) === "#") { var h = hexToRgb(s); return [h[0], h[1], h[2], 1]; }
+		var m = s.match(/^rgba?\(([^)]*)\)$/i);
+		if (!m) return null;
+		var p = m[1].split(/[,/\s]+/).filter(function (v) { return v !== ""; });
+		if (p.length < 3) return null;
+		return [+p[0], +p[1], +p[2], p.length > 3 ? +p[3] : 1];
+	}
+	function themeDeepColor(t) {
+		var stops = (t && t.stops) || [];
+		var best = null, bestLum = 2;
+		for (var i = 0; i < stops.length; i++) {
+			var c = stopRgba(stops[i][1]);
+			if (!c || c[3] < 0.5) continue;
+			var hex = rgbToHex([c[0], c[1], c[2]]);
+			var lum = hexLum(hex);
+			if (lum < bestLum) { bestLum = lum; best = hex; }
+		}
+		if (!best || bestLum > 0.9) return "#4a5568";
+		return best;
+	}
+	function hexLum(hex) {
+		var n = String(hex || "").replace("#", "");
+		if (n.length !== 6) return 1;
+		var c = [0, 2, 4].map(function (i) { return parseInt(n.slice(i, i + 2), 16) / 255; });
+		function f(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+		return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+	}
+	function contrastOnWhite(hex) {
+		return 1.05 / (hexLum(hex) + 0.05);
+	}
+	// Same policy as the plugin: on a light surface the body keeps the palette's
+	// own pale tint and the thin OUTLINE carries the contrast (3:1 on white).
+	// Darkening the body would turn MiMo's pale yellow into a gold strip.
+	function lightDeepColor(t) {
+		var deep = themeDeepColor(t);
+		for (var i = 0; i < 6 && contrastOnWhite(deep) < 3.0; i++) deep = mixHex(deep, "#000000", 0.12);
+		return deep;
+	}
+	function lightBodyTone(t) {
+		return themeDeepColor(t);
+	}
+	function lightHeadColor(t) {
+		return mixHex(lightBodyTone(t), "#000000", 0.06);
+	}
+	// On a light surface the ramp is rebuilt around the brand tone instead of
+	// around white: transparent -> brand -> brand, opaque at the head. Same hue,
+	// so the palette is still recognisable; the contrast comes from opacity and
+	// from the outline, not from a near-white highlight that no longer exists.
+	function hexToRgb(hex) {
+		var n = String(hex || "").replace("#", "");
+		if (n.length !== 6) return [80, 110, 170];
+		return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)];
+	}
+	function rgbToHex(c) {
+		return "#" + c.map(function (v) {
+			var x = Math.max(0, Math.min(255, Math.round(v)));
+			return (x < 16 ? "0" : "") + x.toString(16);
+		}).join("");
+	}
+	function mixHex(a, b, t) {
+		var ca = hexToRgb(a), cb = hexToRgb(b);
+		return rgbToHex([0, 1, 2].map(function (i) { return ca[i] + (cb[i] - ca[i]) * t; }));
+	}
+
+	function lightStops(t) {
+		var deep = lightBodyTone(t);
+		var lifted = mixHex(deep, "#ffffff", 0.45);
+		var shoulder = mixHex(deep, "#ffffff", 0.22);
+		var tip = mixHex(deep, "#000000", 0.06);
+		return [
+			[0, hexToRgba(lifted, 0)],
+			[0.28, hexToRgba(lifted, 0.32)],
+			[0.58, lifted],
+			[0.84, shoulder],
+			[1, tip],
+		];
+	}
+	function hexToRgba(hex, a) {
+		var n = String(hex || "").replace("#", "");
+		if (n.length !== 6) return "rgba(80,120,200," + a + ")";
+		return "rgba(" + parseInt(n.slice(0, 2), 16) + "," + parseInt(n.slice(2, 4), 16) + "," + parseInt(n.slice(4, 6), 16) + "," + a + ")";
+	}
+
 	function buildDefs() {
 		while (defs.firstChild) defs.removeChild(defs.firstChild);
 		defs.appendChild(mask);
+		var light = isLight();
 		for (var gi = 0; gi < 4; gi++) {
 			var gt = bandTheme(gi);
 			var glow = el("radialGradient", { id: "lab-glow-" + gi });
-			(gt.glow || [[0, "rgba(255,255,255,0.9)"], [1, "rgba(255,255,255,0)"]]).forEach(function (s) {
+			var gstops = light
+				? [[0, hexToRgba(mixHex(lightBodyTone(gt), "#000000", 0.06), 0.30)], [0.5, hexToRgba(lightBodyTone(gt), 0.14)], [1, hexToRgba(lightBodyTone(gt), 0)]]
+				: (gt.glow || [[0, "rgba(255,255,255,0.9)"], [1, "rgba(255,255,255,0)"]]);
+			gstops.forEach(function (s) {
 				glow.appendChild(el("stop", { offset: stopOffset(s[0]), "stop-color": s[1] }));
 			});
 			defs.appendChild(glow);
 		}
 		var glow = null;
 		for (var i = 0; i < 4; i++) {
-			var g = el("linearGradient", { id: "lab-grad-" + i, gradientUnits: "userSpaceOnUse" });
-			bandTheme(i).stops.forEach(function (s) {
+			// Unit ramp; the frame loop maps it onto tail->head with one transform.
+	var g = el("linearGradient", { id: "lab-grad-" + i, gradientUnits: "userSpaceOnUse", x1: "0", y1: "0", x2: "1", y2: "0" });
+			var bstops = light ? lightStops(bandTheme(i)) : bandTheme(i).stops;
+			bstops.forEach(function (s) {
 				g.appendChild(el("stop", { offset: stopOffset(s[0]), "stop-color": s[1] }));
 			});
 			defs.appendChild(g);
@@ -289,9 +437,10 @@ var settles = {};
 		for (var i = 0; i < n; i++) {
 			var g = el("g", {});
 			var t = bandTheme(i);
-			var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-" + i + ")", style: "filter:blur(6px);opacity:0.55" });
+			// No CSS blur: the radial gradient carries the falloff (see client.js).
+	var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-" + i + ")", style: "opacity:0.52" });
 			var path = el("path", { d: "", fill: "url(#lab-grad-" + i + ")", opacity: "0.95" });
-			var head = el("circle", { cx: "0", cy: "0", r: half(), fill: t.core });
+			var head = el("circle", { cx: "0", cy: "0", r: half(), fill: isLight() ? lightHeadColor(t) : t.core });
 			var edge = null;
 			if (state.glow) {
 				edge = el("path", { d: "", fill: "none", stroke: "#ffffff", "stroke-width": Math.max(1.4, state.thickness * 0.75), "stroke-opacity": "0.2", style: "filter:blur(3px)" });
@@ -299,6 +448,11 @@ var settles = {};
 			}
 			g.appendChild(glow);
 			g.appendChild(path);
+			var outline = null;
+			if (isLight()) {
+				outline = el("path", { d: "", fill: "none", stroke: lightDeepColor(t), "stroke-width": String(Math.max(1.2, state.thickness * 0.22)), "stroke-opacity": "0.65" });
+				g.appendChild(outline);
+			}
 			var rim = null;
 			var lanes = [];
 			if (t.glass) {
@@ -312,7 +466,7 @@ var settles = {};
 			}
 			g.appendChild(head);
 			group.appendChild(g);
-			bandNodes.push({ g: g, path: path, edge: edge, head: head, glow: glow, rim: rim, lanes: lanes, grad: defs.querySelector("#lab-grad-" + i) });
+			bandNodes.push({ g: g, path: path, edge: edge, outline: outline, head: head, glow: glow, rim: rim, lanes: lanes, grad: defs.querySelector("#lab-grad-" + i) });
 		}
 	}
 
@@ -326,7 +480,7 @@ var settles = {};
 	var themeEl = document.getElementById("theme");
 	// Same order and the same names the plugin's own settings panel shows, so the
 	// lab cannot disagree with the app about which palette is which.
-	var themeOrder = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "meta", "nvidia", "unknown"];
+	var themeOrder = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "mimo", "meta", "nvidia", "unknown"];
 	themeKeys = themeOrder.filter(function (k) { return !!M.THEMES[k]; })
 		.concat(themeKeys.filter(function (k) { return themeOrder.indexOf(k) < 0; }));
 	themeKeys.forEach(function (k) {
@@ -343,10 +497,35 @@ var settles = {};
 		buildBands();
 	}
 
+	// The count control is a segmented button now, so the number is not typed
+	// into a slider any more. The hidden range stays the single source of truth
+	// (every flow below used to write `countEl.value`), and this helper is the
+	// one place that also repaints the segments.
+	function setCountValue(n) {
+		var v = clamp(Math.round(Number(n) || 1), 1, 4);
+		countEl.value = String(v);
+		var ui = window.__LAB_COUNT__;
+		if (ui && ui.set) ui.set(v);
+		else {
+			var badge = document.getElementById("v-count");
+			if (badge) badge.textContent = String(v);
+		}
+	}
+
+	// The theme toggle only flips <html data-theme>, while the ramps are built
+	// once at load. Without this the light/dark comparison would keep the old
+	// palette on the new surface - a review trap that already happened once.
+	try {
+		new MutationObserver(function () {
+			try { softRebuild(); } catch (e) { out.textContent = "error: " + e; }
+		}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+	} catch (e) { /* no MutationObserver: the toggle stays a no-op */ }
+
 	countEl.addEventListener("input", function () {
 		state.count = +countEl.value;
 		document.getElementById("v-count").textContent = state.count;
 		softRebuild();
+		syncThemeEnabled();
 	});
 	trailEl.addEventListener("input", function () {
 		state.trail = +trailEl.value;
@@ -363,10 +542,46 @@ var settles = {};
 	function syncThemeEnabled() {
 		try {
 			themeEl.disabled = false;
-			themeEl.title = multi
-				? "每条光带各自配色开启时，单色选择不生效"
-				: "";
+			themeEl.title = "";
+			var one = document.getElementById("theme-one");
+			var per = document.getElementById("band-themes");
+			if (one) one.hidden = !!multi;
+			if (per) per.hidden = !multi;
+			if (multi) renderBandSelectors();
 		} catch (e) { /* noop */ }
+	}
+
+	// One palette select per running band, in band order. The rows follow the
+	// band count, so "再加一条" grows the list and a finished band shrinks it.
+	function renderBandSelectors() {
+		var host = document.getElementById("band-rows");
+		if (!host) return;
+		var n = clamp(state.count, 1, 4);
+		while (host.firstChild) host.removeChild(host.firstChild);
+		for (var i = 0; i < n; i++) {
+			var row = document.createElement("div");
+			row.className = "brow";
+			var tag = document.createElement("span");
+			tag.textContent = L("panel.band") + " " + (i + 1);
+			var sel = document.createElement("select");
+			sel.setAttribute("data-band", String(i));
+			themeKeys.forEach(function (k) {
+				var o = document.createElement("option");
+				o.value = k;
+				o.textContent = M.THEMES[k].label || k;
+				sel.appendChild(o);
+			});
+			sel.value = bandKey(i);
+			sel.addEventListener("change", function (ev) {
+				var idx = +ev.target.getAttribute("data-band");
+				bandKeys[idx] = ev.target.value;
+				buildDefs();
+				buildBands();
+			});
+			row.appendChild(tag);
+			row.appendChild(sel);
+			host.appendChild(row);
+		}
 	}
 
 	multiEl.addEventListener("change", function () {
@@ -440,8 +655,7 @@ var settles = {};
 		var n = clamp(state.count, 1, 4);
 		if (n >= 4) return;
 		state.count = n + 1;
-		countEl.value = String(state.count);
-		document.getElementById("v-count").textContent = String(state.count);
+		setCountValue(state.count);
 		if (state.mode === "idle") state.mode = "thinking";
 		buildBands();
 		bornOne(n);
@@ -457,7 +671,7 @@ var settles = {};
 
 	function resetAll() {
 		// Defaults mirror the markup, so there is one place to keep them honest.
-		var d = { count: 1, trail: 320, thickness: 6, speed: 1.6, sweep: 0.62, glow: true, multi: false, reply: false, theme: "deepseek" };
+		var d = { count: 1, trail: 320, thickness: 6, speed: 1, sweep: 0.62, glow: true, multi: false, reply: false, theme: "deepseek" };
 		state.count = d.count;
 		state.trail = d.trail;
 		state.thickness = d.thickness;
@@ -474,7 +688,7 @@ var settles = {};
 		multi = d.multi;
 		themeKey = d.theme;
 
-		countEl.value = String(d.count);
+		setCountValue(d.count);
 		trailEl.value = String(d.trail);
 		thickEl.value = String(d.thickness);
 		themeEl.value = d.theme;
@@ -552,7 +766,14 @@ var settles = {};
 		return false;
 	}
 
-	var EGG_QUESTION = "现在是什么时段？";
+	// Either language counts as "the question": the demo box is bilingual and a
+	// visitor types whatever their UI is set to.
+	function isEggQuestion(value) {
+		var v = String(value == null ? "" : value).trim().replace(/\s+/g, " ");
+		if (!v) return false;
+		return v === "现在是什么时段?" || v === "现在是什么时段？"
+			|| v.toLowerCase() === L("egg.question").toLowerCase().replace(/\s+/g, " ");
+	}
 	var EGG_COOLDOWN_MS = 45000;
 	var eggLastAt = -1e9;
 
@@ -568,14 +789,20 @@ var settles = {};
 		var peak = isPeakMoment(date);
 		var bubble = document.createElement("div");
 		bubble.className = "bubble";
-		bubble.appendChild(document.createTextNode("现在是"));
+		var prefix = document.createElement("span");
+		prefix.setAttribute("data-i18n", "egg.prefix");
+		prefix.textContent = L("egg.prefix");
+		bubble.appendChild(prefix);
 		var word = document.createElement("span");
 		word.className = "glass-word " + (peak ? "warm" : "cool");
-		word.textContent = peak ? "梁文峰" : "梁文谷";
+		word.setAttribute("data-i18n", peak ? "egg.peak" : "egg.off");
+		word.textContent = L(peak ? "egg.peak" : "egg.off");
 		bubble.appendChild(word);
-		// Only the two names are a glass badge; "时段" is ordinary text. The
-		// tabular space keeps the words from touching the badge's glow.
-		bubble.appendChild(document.createTextNode("时段。"));
+		// Only the two names are a glass badge; the rest is ordinary text.
+		var suffix = document.createElement("span");
+		suffix.setAttribute("data-i18n", "egg.suffix");
+		suffix.textContent = L("egg.suffix");
+		bubble.appendChild(suffix);
 		return bubble;
 	}
 
@@ -603,7 +830,8 @@ var settles = {};
 		if (word) {
 			var peak = isPeakMoment(date);
 			word.className = "glass-word " + (peak ? "warm" : "cool");
-			word.textContent = peak ? "梁文峰" : "梁文谷";
+			word.setAttribute("data-i18n", peak ? "egg.peak" : "egg.off");
+			word.textContent = L(peak ? "egg.peak" : "egg.off");
 		}
 		var fresh = document.getElementById("answer");
 		if (!fresh) {
@@ -622,13 +850,14 @@ var settles = {};
 	function sendAsk(rawText, when) {
 		var value = String(rawText == null ? "" : rawText).trim();
 		if (!value) return false;
-		var takeover = value === EGG_QUESTION ? resetConvo() : null;
+		var egg = isEggQuestion(value);
+		var takeover = egg ? resetConvo() : null;
 		var user = document.createElement("div");
 		user.className = "bubble user";
 		user.textContent = value;
 		pushBubble(user);
 		if (takeover) pushBubble(takeover);
-		if (value !== EGG_QUESTION) return true;
+		if (!egg) return true;
 		eggLastAt = clock;
 		setTimeout(function () { pushBubble(eggAnswer(when || new Date())); }, 520);
 		return true;
@@ -664,9 +893,44 @@ var settles = {};
 		spawnGhost();
 	}
 
+	function liveBands() {
+		var out = [];
+		var n = clamp(state.count, 1, 4);
+		for (var i = 0; i < n && i < bandNodes.length; i++) {
+			if (!bandNodes[i].gone) out.push(i);
+		}
+		return out;
+	}
+
+	// The finish actions do not invent a light: they take one of the bands that
+	// is already on the edge (random pick), let that one leave, lap its target
+	// and fade, then drop it for real - the same hand-off the plugin performs
+	// when a conversation stops. Nothing on the edge? Put one there first and
+	// run the action a beat later.
 	function spawnGhost(toRow) {
 		if (!track) return;
-		var from = lastHeads[0] || { x: W / 2, y: H / 2 };
+		var live = liveBands();
+		if (!live.length) {
+			state.mode = "thinking";
+			state.manualStop = false;
+			orbit = { mode: "off" };
+			bornAll(clock);
+			pendingRetire = { at: clock + 460, toRow: toRow };
+			return;
+		}
+		var k = live[Math.floor(Math.random() * live.length)];
+		var nd = bandNodes[k];
+		var t = bandTheme(k) || theme();
+		var from = lastHeads[k] || { x: W / 2, y: H / 2 };
+		nd.gone = true;
+		try {
+			nd.g.style.transition = "opacity 130ms linear";
+			nd.g.style.opacity = "0";
+		} catch (e) { /* noop */ }
+		if (nd.edge) nd.edge.setAttribute("d", "");
+		if (nd.rim) nd.rim.setAttribute("d", "");
+		if (nd.lanes) for (var q1 = 0; q1 < nd.lanes.length; q1++) nd.lanes[q1].setAttribute("d", "");
+
 		var ring = composerRing();
 		if (toRow) {
 			var rowEl = document.querySelector('[data-demo-row="bg1"]');
@@ -677,19 +941,22 @@ var settles = {};
 			}
 		}
 		var path = M.returnPath(from, ring);
-		var t = theme();
 		var g = el("g", {});
-		var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-0)", style: "filter:blur(5px);opacity:0" });
-		var path2 = el("path", { d: "", fill: t.core, opacity: "1" });
-		var head = el("circle", { cx: "0", cy: "0", r: half(), fill: t.core, opacity: "1" });
+		g.style.opacity = "0";
+		// Same gradient the band itself was painting with, so the colour never
+		// changes mid-flight (per-band palettes included).
+		var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-" + k + ")", style: "opacity:0" });
+		var path2 = el("path", { d: "", fill: "url(#lab-grad-" + k + ")", opacity: "1" });
+		var head = el("circle", { cx: "0", cy: "0", r: half(), fill: isLight() ? lightHeadColor(t) : t.core, opacity: "1" });
 		g.appendChild(glow);
 		g.appendChild(path2);
 		g.appendChild(head);
 		ghostHost.appendChild(g);
+		var grad = defs ? defs.querySelector("#lab-grad-" + k) : null;
 		// The speed profile is 1 - A*cos(2*pi*p): its slope peaks a quarter lap off
 		// a corner. Wait for the next peak and leave carrying exactly that speed.
 		var amp = M.getSweepAmp ? M.getSweepAmp() : 0.62;
-		var ph0 = phases[0] == null ? 0 : phases[0];
+		var ph0 = phases[k] == null ? 0 : phases[k];
 		var sgn = state.dirNow < 0 ? -1 : 1;
 		var pick = null;
 		[0.25, 0.75].forEach(function (quarter) {
@@ -702,7 +969,57 @@ var settles = {};
 		// px / (px/ms) is already ms; scaling by 1000 here made the hop ~26min long.
 		var dur = Math.max(240, (path.leg + path.lap) / (exitSpeed / 1.57));
 		ghostSpawns += 1;
-	ghosts.push({ g: g, path: path2, head: head, glow: glow, at: clock + wait, dur: dur, wait: wait, uNow: 0, pathData: path });
+		ghosts.push({ g: g, path: path2, head: head, glow: glow, grad: grad, slot: k, at: clock + wait, dur: dur, wait: wait, uNow: 0, pathData: path });
+	}
+
+	// The band is gone for good: the survivors keep their phases and re-space
+	// over the usual settle window, so nothing jumps when the count drops.
+	function finishRetire(slot) {
+		var keep = [];
+		for (var i = 0; i < bandNodes.length; i++) {
+			if (i === slot || bandNodes[i].gone) continue;
+			if (phases[i] == null) continue;
+			keep.push(phases[i]);
+		}
+		reseedFrom(keep);
+	}
+
+	function reseedFrom(keepPhases) {
+		var n = keepPhases.length;
+		if (!n) {
+			// Every band has left the frame. The rim is empty from here on, which
+			// is exactly what the plugin does once a conversation stops; keeping a
+			// band alive "so the stage is never empty" also left the speed dial's
+			// playing wobble running with nothing playing.
+			state.count = 1;
+			setCountValue(1);
+			state.mode = "idle";
+			state.manualStop = false;
+			state.answerGrowAt = 0;
+			orbit = { mode: "off" };
+			blankBands();
+			syncThemeEnabled();
+			syncBandState();
+			return;
+		}
+		state.count = n;
+		setCountValue(n);
+		buildDefs();
+		buildBands();
+		phases = {};
+		settles = {};
+		pending = {};
+		shifts = {};
+		lenState = {};
+		births = {};
+		grabs = {};
+		catches = {};
+		for (var i = 0; i < n; i++) {
+			phases[i] = wrap1(keepPhases[i]);
+			lenState[i] = { len: state.trail, at: clock };
+			births[i] = clock - 100000;
+		}
+		syncThemeEnabled();
 	}
 
 	function clearGhosts() {
@@ -747,6 +1064,11 @@ var settles = {};
 		var h = half();
 		var t = theme();
 		var n = clamp(state.count, 1, 4);
+		if (pendingRetire && clock >= pendingRetire.at) {
+			var pr = pendingRetire;
+			pendingRetire = null;
+			spawnGhost(pr.toRow);
+		}
 		maybeFinish();
 
 		// Reverse (waiting for the user) is eased in, so the tail swaps sides
@@ -765,6 +1087,7 @@ var settles = {};
 			var warpedBaseL = wrap1(M.sweep(wrap1(state.p)));
 			for (var i = 0; i < nB && i < bandNodes.length; i++) {
 				var nd = bandNodes[i];
+				if (nd.gone) continue;
 				var bt = bandTheme(i);
 				var targetPh = wrap1(warpedBaseL + i / nB);
 				var stl = settles[i];
@@ -828,6 +1151,7 @@ var settles = {};
 				nd.path.setAttribute("d", d);
 				if (nd.edge && d) nd.edge.setAttribute("d", d);
 				if (nd.edgeB && d) nd.edgeB.setAttribute("d", d);
+				if (nd.outline) nd.outline.setAttribute("d", d || "");
 				if (bt.glass && nd.lanes && nd.lanes.length) {
 					var ha = (head.angle * Math.PI) / 180;
 					var nx = -Math.sin(ha);
@@ -866,10 +1190,17 @@ var settles = {};
 					nd.glow.setAttribute("r", (hL * 3.4).toFixed(2));
 				}
 				if (nd.grad) {
-					nd.grad.setAttribute("x1", tailPt.x.toFixed(1));
-					nd.grad.setAttribute("y1", tailPt.y.toFixed(1));
-					nd.grad.setAttribute("x2", headPt.x.toFixed(1));
-					nd.grad.setAttribute("y2", headPt.y.toFixed(1));
+					// One quantised transform instead of four coordinates.
+					var gdx = headPt.x - tailPt.x, gdy = headPt.y - tailPt.y;
+					var glen = Math.sqrt(gdx * gdx + gdy * gdy) || 1;
+					var gt = Math.round(tailPt.x * 4) / 4, gty = Math.round(tailPt.y * 4) / 4;
+					var ga = Math.round(Math.atan2(gdy, gdx) * 360 / (Math.PI * 2) * 4) / 4;
+					var gl = Math.round(glen * 10) / 10;
+					var gkey = gt + "," + gty + "," + ga + "," + gl;
+					if (nd.gradKey !== gkey) {
+						nd.gradKey = gkey;
+						nd.grad.setAttribute("gradientTransform", "translate(" + gt + " " + gty + ") rotate(" + ga + ") scale(" + gl + " 1)");
+					}
 				}
 				lastHeads[i] = headPt;
 			}
@@ -879,7 +1210,7 @@ var settles = {};
 		for (var gi = ghosts.length - 1; gi >= 0; gi--) {
 			var gh = ghosts[gi];
 			if (now < gh.at) { gh.g.style.opacity = "0"; gh.uNow = 0; continue; }
-			gh.g.style.opacity = "";
+			gh.g.style.opacity = String(Math.min(1, (now - gh.at) / 130));
 			var u = Math.min(1, (now - gh.at) / gh.dur);
 			gh.uNow = u;
 			var e = easeInOutCubic(u);
@@ -889,6 +1220,13 @@ var settles = {};
 			var pts3 = [];
 			for (var q = 0; q < 34; q++) pts3.push(gh.pathData.at(Math.max(0, s - tl2 * (q / 33))));
 			gh.path.setAttribute("d", pts3.length > 1 ? M.polyRibbon(pts3, h) : "");
+			if (gh.grad) {
+				var tailP = gh.pathData.at(Math.max(0, s - tl2));
+				gh.grad.setAttribute("x1", tailP.x.toFixed(1));
+				gh.grad.setAttribute("y1", tailP.y.toFixed(1));
+				gh.grad.setAttribute("x2", pl.x.toFixed(1));
+				gh.grad.setAttribute("y2", pl.y.toFixed(1));
+			}
 			var fade = u < 0.62 ? 1 : Math.max(0, 1 - (u - 0.62) / 0.38);
 			gh.path.setAttribute("opacity", String(fade));
 			gh.head.setAttribute("cx", pl.x.toFixed(1));
@@ -901,6 +1239,7 @@ var settles = {};
 			if (u >= 1) {
 				gh.g.remove();
 				ghosts.splice(gi, 1);
+				finishRetire(gh.slot);
 			}
 		}
 
@@ -914,6 +1253,8 @@ var settles = {};
 			"  glow=" + state.glow + "  dir=" + (state.dirNow < -0.02 ? "cw" : "ccw") +
 			"\norbit=" + orbit.mode +
 			"  ring=" + (state.mode === "streaming" ? "yes" : "-") +
+			"  r=" + winRadius +
+			"  surface=" + (isLight() ? "light" : "dark") +
 			"  corner=" + (cornerPh === null ? "null" : cornerPh.toFixed(3)) +
 			"  pending=" + (function () { var c = 0; for (var pk in pending) if (pending[pk]) c++; return c; })() +
 			"  sweep=" + (M.getSweepAmp ? M.getSweepAmp().toFixed(2) : "?") +
@@ -961,26 +1302,61 @@ var settles = {};
 				  "  leg=" + Math.round(ghosts[0].pathData.leg) + " total=" + Math.round(ghosts[0].pathData.total) +
 				  " dlen=" + ((ghosts[0].path.getAttribute("d") || "").length) +
 				  " at=" + ghosts[0].head.getAttribute("cx") + "," + ghosts[0].head.getAttribute("cy")
+
 				: "");
 	}
 
 
+	// Whether a light band is actually on the frame right now. The state is read
+	// off the scene itself - a ribbon with a non-empty path - never off a
+	// button's or a switch's pressed state: a band can be running with no click
+	// behind it (a URL warm-up, a band that is still finishing its lap, a frozen
+	// ?p= capture). The speed slider's M3 "playing" wobble is driven by this.
+	function hasBands() {
+		for (var i = 0; i < bandNodes.length; i++) {
+			var nd = bandNodes[i];
+			if (!nd || nd.gone) continue;
+			if (nd.path && (nd.path.getAttribute("d") || "").length > 0) return true;
+		}
+		return false;
+	}
+	function syncBandState() {
+		var on = hasBands() ? "1" : "0";
+		var root = document.documentElement;
+		if (root.getAttribute("data-bands") !== on) root.setAttribute("data-bands", on);
+	}
+
 	window.__LAB__ = {
-		setSpeed: function (v) { labSpeed = clamp(Number(v) || 1.6, 0.3, 3); recalcLap(); },
+		hasBands: hasBands,
+		setSpeed: function (v) { labSpeed = clamp(Number(v) || 1, SPEED_MIN, SPEED_MAX); recalcLap(); },
 		getSpeed: function () { return labSpeed; },
 		state: state,
 		getLap: function () { return lapMs; },
+		// Corner radius the track is turning with, and which surface the ramp
+		// was built for: the two numbers that explain most "the corner looks
+		// wrong" reports.
+		getRadius: function () { return winRadius; },
+		isLight: isLight,
 		// Easter-egg hooks: let a headless capture ask the question directly, and
 		// let the console check the billing window without touching the DOM.
 		isPeakMoment: isPeakMoment,
 		sendAsk: sendAsk
 	};
 
+	// Switching language rebuilds the strings this script owns: the band rows
+	// are generated (not in the markup) and the egg badge names the current
+	// window, so both have to be repainted rather than translated in place.
+	window.addEventListener("lab-lang", function () {
+		try { renderBandSelectors(); } catch (e) { /* not built yet */ }
+		try { initEggConversation(new Date()); } catch (e) { /* no convo yet */ }
+	});
+
 	function frameLoop(ts) {
 		if (!lastT) lastT = ts;
 		var dt = clamp(ts - lastT, 1, 133);
 		lastT = ts;
 		try { advance(dt); } catch (e) { out.textContent = "error: " + e; }
+		syncBandState();
 		requestAnimationFrame(frameLoop);
 	}
 
@@ -995,11 +1371,18 @@ var settles = {};
 			var p = kv.split("=");
 			q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || "");
 		});
-		if (q.n) { state.count = clamp(+q.n || 1, 1, 4); countEl.value = state.count; document.getElementById("v-count").textContent = state.count; }
+		if (q.n) { state.count = clamp(+q.n || 1, 1, 4); setCountValue(state.count); }
 		if (q.trail) { state.trail = +q.trail; trailEl.value = state.trail; document.getElementById("v-trail").textContent = state.trail; }
 		if (q.t) { state.thickness = +q.t; thickEl.value = state.thickness; document.getElementById("v-thick").textContent = state.thickness; }
-		if (q.theme && M.THEMES[q.theme]) { themeKey = q.theme; themeEl.value = themeKey; }
+		if (q.theme) {
+			// "prism" is the name users know; the palette key itself is "unknown"
+			// (it is the fallback for unrecognised models).
+			var wantKey = q.theme === "prism" ? "unknown" : q.theme;
+			if (M.THEMES[wantKey]) { themeKey = wantKey; themeEl.value = themeKey; }
+		}
 		if (q.multi) { multi = true; multiEl.checked = true; }
+		// ?corner=0 reproduces the old square-cornered track, for A/B captures.
+		if (q.corner !== undefined) { cornerOverride = parseFloat(q.corner) || 0; }
 		if (q.reply) { state.reply = true; replyEl.checked = true; }
 		if (q.sweep) {
 			// 0 is a real value here (uniform speed), so no "|| default" shortcut:
@@ -1008,6 +1391,17 @@ var settles = {};
 			var sel = document.getElementById("sweep");
 			if (sel) { sel.value = String(sv); document.getElementById("v-sweep").textContent = sv.toFixed(2); }
 			if (M.setSweepAmp) M.setSweepAmp(sv);
+		}
+		if (q.speed) {
+			// The dial value, same scale the panel and the plugin use (1 = the
+			// shipped pace). recalcLap() applies the reference multiplier.
+			var spv = clamp(+q.speed, SPEED_MIN, SPEED_MAX);
+			labSpeed = spv;
+			var spEl = document.getElementById("speed");
+			if (spEl) spEl.value = String(spv);
+			var spBadge = document.getElementById("v-speed");
+			if (spBadge) spBadge.textContent = spv.toFixed(2);
+			recalcLap();
 		}
 		if (q.stylecheck === "1") wantStyleCheck = true;
 		buildScene();
@@ -1050,8 +1444,31 @@ var settles = {};
 			// scene clears ghostSvg and would detach the ghost's nodes.
 			pendingGhost = clamp(+q.ghost || 0, 0, 4000);
 		}
-		if (q.p) { state.p = clamp(+q.p, 0, 1); frozen = true; }
+		if (q.p) {
+			state.p = clamp(+q.p, 0, 1);
+			frozen = true;
+			// Pinning the phase has to re-seat the bands on it. Each band normally
+			// eases from wherever it was born toward its slot over four seconds of
+			// scene clock, and freezing the scene freezes that clock too - so
+			// without this every `?p=` value produced the same corner born frame.
+			var wbP = wrap1(M.sweep(wrap1(state.p)));
+			var nP = clamp(state.count, 1, 4);
+			phases = {};
+			settles = {};
+			pending = {};
+			shifts = {};
+			births = [];
+			lenState = {};
+			for (var pi = 0; pi < nP; pi++) {
+				phases[pi] = wrap1(wbP + pi / nP);
+				births[pi] = clock - 100000;
+				lenState[pi] = { len: state.trail, at: clock };
+			}
+		}
 		buildScene();
+		// The palette groups follow `multi`, and a URL flag sets it after the
+		// one-time sync above, so re-run it once the params are all applied.
+		syncThemeEnabled();
 		if (pendingGhost) {
 			spawnGhost(true);
 			for (var wg = 0; wg < pendingGhost; wg += 16.7) advance(16.7);
@@ -1067,6 +1484,9 @@ var settles = {};
 			var after = clamp(+q.after || 0, 0, 6000);
 			for (var wc = 0; wc < after; wc += 16.7) advance(16.7);
 		}
+		// The scripted warm-up above paints bands without a frame, so the wobble
+		// attribute has to be decided once before the loop takes over.
+		syncBandState();
 		requestAnimationFrame(frameLoop);
 	})();
 })();
