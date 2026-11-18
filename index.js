@@ -20,6 +20,10 @@ const Config = z.object({
 	trailLength: z.number().step(1).min(40).max(1200).default(320).volatile(),
 	thickness: z.number().step(1).min(2).max(24).default(6).volatile(),
 	modelColor: z.boolean().default(true).volatile(),
+	// Gemini is the only vendor with a second palette: the persona skin
+	// (black-purple ramp, champagne-gold head, gold sparks) from the
+	// "Gemini娘" character sheet. Off keeps the Google brand four colours.
+	geminiMuse: z.boolean().default(false).volatile(),
 	edgeGlow: z.boolean().default(true).volatile(),
 	theme: z.string().default("").volatile(),
 	unknownTheme: z.string().default("prism").volatile(),

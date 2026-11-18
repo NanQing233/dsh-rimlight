@@ -1141,7 +1141,7 @@ html[data-layout="mobile"] #footer {
 		background: var(--fr-bg);
 		border: 1px solid var(--frame-border);
 		box-shadow: var(--frame-shadow);
-		overflow: hidden;
+		overflow: visible;
 		transition: background 320ms ease, border-color 320ms ease, box-shadow 320ms ease;
 	}
 	#frame::after {
@@ -1152,6 +1152,7 @@ html[data-layout="mobile"] #footer {
 	}
 	#frame .titlebar {
 		position: absolute; inset: 0 0 auto 0; height: 42px; display: flex; align-items: center; gap: 8px;
+		border-top-left-radius: 22px; border-top-right-radius: 22px;
 		padding: 0 14px; font-size: 12px; color: var(--fr-title-ink); letter-spacing: 0.02em;
 		background: var(--fr-titlebar);
 		border-bottom: 1px solid var(--fr-rule);
@@ -1160,7 +1161,7 @@ html[data-layout="mobile"] #footer {
 	#frame .titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,0.25)); box-shadow: 0 0 12px var(--fr-dot-glow); }
 	#frame .wincontrols { position: absolute; right: 8px; top: 6px; height: 30px; display: flex; gap: 4px; }
 	#frame .wincontrols i { width: 38px; height: 30px; display: flex; align-items: center; justify-content: center; font-style: normal; color: var(--fr-ctl-ink); border-radius: 9px; background: var(--fr-ctl-bg); border: 1px solid var(--fr-ctl-border); transition: background 320ms ease, color 240ms ease; }
-	#frame .sidebar { position: absolute; left: 0; top: 42px; bottom: 0; width: 208px; padding: 12px 10px; border-right: 1px solid var(--fr-rule); background: var(--fr-sidebar); transition: background 320ms ease, border-color 320ms ease; }
+	#frame .sidebar { position: absolute; left: 0; top: 42px; bottom: 0; width: 208px; padding: 12px 10px; border-right: 1px solid var(--fr-rule); border-bottom-left-radius: 22px; background: var(--fr-sidebar); transition: background 320ms ease, border-color 320ms ease; }
 	#frame .sidebar .row { height: 32px; border-radius: 10px; margin-bottom: 7px; background: var(--fr-row); border: 1px solid var(--fr-row-border); transition: background 320ms ease, border-color 320ms ease; }
 	#frame .sidebar .row.sel { background: var(--fr-row-sel); border-color: var(--fr-row-sel-border); box-shadow: var(--fr-row-sel-glow); }
 	#frame .convo { position: absolute; left: 208px; right: 0; top: 42px; bottom: 0; padding: 18px 28px 100px; overflow: hidden; }
@@ -1214,7 +1215,7 @@ html[data-layout="mobile"] #footer {
 	#frame .bubble .glass-word.cool { color: #7ef0a8; text-shadow: 0 0 1px rgba(120,255,180,0.9), 0 0 10px rgba(52,214,132,0.8), 0 0 20px rgba(20,180,110,0.5); }
 	html[data-theme="light"] #frame .bubble .glass-word.warm { color: #d1373f; text-shadow: 0 0 8px rgba(255,90,100,0.35); }
 	html[data-theme="light"] #frame .bubble .glass-word.cool { color: #128a4f; text-shadow: 0 0 8px rgba(60,200,130,0.30); }
-	#overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; contain: layout paint style; }
+	#overlay { position: absolute; inset: 0; pointer-events: none; overflow: visible; contain: layout style; }
 
 
 </style>
@@ -1501,6 +1502,8 @@ html[data-theme="light"] {
 	<span class="copy" data-i18n="footer.copy">© 2026 南清</span>
 	<span class="sep">·</span>
 	<a href="https://github.com/NanQing233/dsh-rimlight/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" title="MPL-2.0 许可证全文" data-i18n-title="footer.licenseTitle"><span data-i18n="footer.license">MPL-2.0 许可</span></a>
+	<span class="sep">·</span>
+	<button id="privacy-open" class="footer-tab" type="button" aria-haspopup="dialog" data-i18n="footer.privacy" data-i18n-aria-label="footer.privacy">隐私声明</button>
 </footer>
 
 <script>
@@ -1564,7 +1567,14 @@ html[data-theme="light"] {
 				"panel.band": "光带",
 				"footer.copy": "© 2026 南清",
 				"footer.license": "MPL-2.0 许可",
-				"footer.licenseTitle": "MPL-2.0 许可证全文"
+				"footer.licenseTitle": "MPL-2.0 许可证全文",
+				"footer.privacy": "隐私声明",
+				"privacy.title": "隐私声明",
+				"privacy.p1": "本网站的 DNS 解析提供商为 Cloudflare。因此在页面加载时，Cloudflare 会自动向页面注入一段 Web Analytics 的 beacon 脚本，用来统计访问情况。",
+				"privacy.p2": "具体统计内容为：页面浏览量、访客数、来源页面（referrer）、浏览器与设备类型（User-Agent）、国家/地区，以及页面加载性能（Core Web Vitals）等聚合指标。",
+				"privacy.p3": "除此以外本网站不使用任何追踪技术。如果不希望被统计，可以在浏览器中启用内容拦截扩展，或直接阻止该脚本所在的域名。",
+				"privacy.ok": "知道了",
+				"privacy.close": "关闭"
 			},
 			en: {
 				"page.title": "Rimlight · Lab",
@@ -1612,7 +1622,14 @@ html[data-theme="light"] {
 				"btn.reset": "Reset",
 				"panel.band": "Band",
 				"footer.license": "MPL-2.0",
-				"footer.licenseTitle": "Full MPL-2.0 text"
+				"footer.licenseTitle": "Full MPL-2.0 text",
+				"footer.privacy": "Privacy",
+				"privacy.title": "Privacy statement",
+				"privacy.p1": "This site's DNS is provided by Cloudflare. That is why, when the page loads, Cloudflare automatically injects a Web Analytics beacon script to measure traffic.",
+				"privacy.p2": "The statistics cover: page views, unique visitors, referring page (referrer), browser and device type (User-Agent), country/region, and page-load performance (Core Web Vitals) — all in aggregate.",
+				"privacy.p3": "Other than that, this site uses no tracking technology. If you would rather not be counted, enable a content blocker in your browser, or block the script's domain directly.",
+				"privacy.ok": "Got it",
+				"privacy.close": "Close"
 			}
 		};
 		var LANG = "zh";
@@ -2426,6 +2443,153 @@ html[data-theme="light"] {
 		} catch (e) { /* no observer */ }
 	})();
 
+</script>
+
+<style>
+	/* Footer "tab" that opens the privacy notice. */
+	#footer .footer-tab {
+		font: inherit;
+		color: inherit;
+		background: transparent;
+		border: 0;
+		padding: 2px 8px;
+		margin: 0 2px;
+		border-radius: 999px;
+		cursor: pointer;
+		opacity: 0.92;
+		line-height: inherit;
+	}
+	#footer .footer-tab:hover {
+		background: var(--md-sys-color-surface-container-highest, rgba(255, 255, 255, 0.10));
+		text-decoration: none;
+	}
+	#footer .footer-tab:focus-visible {
+		outline: 2px solid var(--md-sys-color-primary, #c9b8ff);
+		outline-offset: 2px;
+	}
+
+	/* Privacy dialog. */
+	.privacy-modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+	.privacy-modal[hidden] { display: none; }
+	.privacy-modal__scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.58); backdrop-filter: blur(2px); }
+	.privacy-modal__card {
+		position: relative;
+		width: min(680px, 100%);
+		max-height: min(78vh, 760px);
+		overflow: auto;
+		background: var(--md-sys-color-surface-container-high, #211d2c);
+		color: var(--md-sys-color-on-surface, #e8e2f4);
+		border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.14));
+		border-radius: 24px;
+		box-shadow: 0 24px 64px rgba(0, 0, 0, 0.48);
+		padding: 22px 26px 18px;
+	}
+	.privacy-modal__head { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+	.privacy-modal__head h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.01em; }
+	.privacy-modal__close {
+		border: 0; background: transparent; color: inherit; font-size: 18px; line-height: 1;
+		width: 34px; height: 34px; border-radius: 50%; cursor: pointer; opacity: 0.8;
+	}
+	.privacy-modal__close:hover { background: var(--md-sys-color-surface-container-highest, rgba(255, 255, 255, 0.10)); opacity: 1; }
+	.privacy-modal__body { margin-top: 14px; font-size: 14px; line-height: 1.72; }
+	.privacy-modal__body p { margin: 0 0 10px; }
+	.privacy-modal__body ul { margin: 0 0 12px; padding-left: 1.15em; }
+	.privacy-modal__body li { margin: 4px 0; }
+	.privacy-modal__body p:last-child { margin-bottom: 0; }
+	.privacy-modal__foot { display: flex; justify-content: flex-end; margin-top: 18px; }
+	.privacy-modal__foot .m3-button { min-width: 96px; }
+	@media (max-width: 640px) {
+		.privacy-modal { padding: 14px; }
+		.privacy-modal__card { padding: 18px 18px 14px; border-radius: 20px; }
+	}
+</style>
+
+<div id="privacy-modal" class="privacy-modal" hidden>
+	<div class="privacy-modal__scrim" data-privacy-close></div>
+	<div class="privacy-modal__card" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+		<div class="privacy-modal__head">
+			<h2 id="privacy-title" data-i18n="privacy.title">隐私声明</h2>
+			<button id="privacy-close" class="privacy-modal__close" type="button" data-privacy-close data-i18n-aria-label="privacy.close" aria-label="关闭">✕</button>
+		</div>
+		<div class="privacy-modal__body">
+			<p data-i18n="privacy.p1">本网站的 DNS 解析提供商为 Cloudflare。因此在页面加载时，Cloudflare 会自动向页面注入一段 Web Analytics 的 beacon 脚本，用来统计访问情况。</p>
+			<p data-i18n="privacy.p2">具体统计内容为：页面浏览量、访客数、来源页面（referrer）、浏览器与设备类型（User-Agent）、国家/地区，以及页面加载性能（Core Web Vitals）等聚合指标。</p>
+			<p data-i18n="privacy.p3">除此以外本网站不使用任何追踪技术。如果不希望被统计，可以在浏览器中启用内容拦截扩展，或直接阻止该脚本所在的域名。</p>
+		</div>
+		<div class="privacy-modal__foot">
+			<button id="privacy-ok" class="m3-button m3-button--filled" type="button" data-privacy-close data-i18n="privacy.ok">知道了</button>
+		</div>
+	</div>
+</div>
+
+<script>
+	(function () {
+		var modal = document.getElementById("privacy-modal");
+		var openBtn = document.getElementById("privacy-open");
+		if (!modal || !openBtn) return;
+
+		// The privacy notice belongs to the official site only. On any other
+		// origin (local file, localhost, a mirror) its footer entry is hidden
+		// entirely, together with the separator before it.
+		var OFFICIAL_HOSTS = ["xn--de-gj5f71e.luxe", "www.xn--de-gj5f71e.luxe"];
+		var officialSite = false;
+		try {
+			var host = String(location.hostname || "").toLowerCase().replace(/\.$/, "");
+			officialSite = OFFICIAL_HOSTS.indexOf(host) >= 0;
+		} catch (e) { officialSite = false; }
+		if (!officialSite) {
+			openBtn.style.display = "none";
+			var sep = openBtn.previousElementSibling;
+			if (sep && sep.className && String(sep.className).indexOf("sep") >= 0) sep.style.display = "none";
+			modal.hidden = true;
+			return;
+		}
+
+		var lastFocus = null;
+
+		// The i18n layer runs its first apply() before this modal is parsed, so its
+		// [data-i18n] nodes never got translated on initial load (the English page
+		// showed Chinese here). Translate just this subtree now that it exists.
+		(function () {
+			var t = window.__LAB_I18N__ && window.__LAB_I18N__.t;
+			if (!t) return;
+			var ns = modal.querySelectorAll("[data-i18n]");
+			for (var i = 0; i < ns.length; i++) ns[i].textContent = t(ns[i].getAttribute("data-i18n"));
+			var al = modal.querySelectorAll("[data-i18n-aria-label]");
+			for (var j = 0; j < al.length; j++) al[j].setAttribute("aria-label", t(al[j].getAttribute("data-i18n-aria-label")));
+		})();
+
+		function open() {
+			lastFocus = document.activeElement;
+			modal.hidden = false;
+			document.documentElement.style.setProperty("overflow", "hidden");
+			var focusTarget = document.getElementById("privacy-ok") || document.getElementById("privacy-close");
+			if (focusTarget && focusTarget.focus) {
+				try { focusTarget.focus(); } catch (e) { /* noop */ }
+			}
+		}
+
+		function close() {
+			if (modal.hidden) return;
+			modal.hidden = true;
+			document.documentElement.style.removeProperty("overflow");
+			if (lastFocus && lastFocus.focus) {
+				try { lastFocus.focus(); } catch (e) { /* noop */ }
+			}
+		}
+
+		openBtn.addEventListener("click", open);
+		modal.addEventListener("click", function (ev) {
+			var t = ev.target;
+			if (t && t.getAttribute && t.hasAttribute("data-privacy-close")) close();
+		});
+		document.addEventListener("keydown", function (ev) {
+			if (ev.key === "Escape" && !modal.hidden) close();
+		});
+		// Deep link: #privacy opens the notice (handy for linking from the README).
+		if (String(location.hash || "").toLowerCase() === "#privacy") open();
+		window.__LAB_PRIVACY__ = { open: open, close: close };
+	})();
 </script>
 
 </body>

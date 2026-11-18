@@ -48,6 +48,7 @@ window.__ModuleLoader__.load({
 					speed: "速度倍率",
 					speedHint: "沿边框绕行的快慢：1 为默认基准，0.5 更慢、2 更快（范围 0.19–1.88）",
 					modelColor: "根据对话使用模型自动选择配色",
+					geminiMuse: "使用Gemini娘配色作为Gemini模型配色",
 					edgeGlow: "边缘泛光",
 					theme: "全局配色",
 					unknownTheme: "无法识别时使用的配色",
@@ -71,6 +72,7 @@ window.__ModuleLoader__.load({
 					speed: "Speed multiplier",
 					speedHint: "How fast the band circles the frame: 1 is the default pace, 0.5 slower, 2 faster (0.19-1.88)",
 					modelColor: "Pick colours from the model each conversation uses",
+					geminiMuse: "Use the Gemini Muse palette for Gemini models",
 					edgeGlow: "Edge glow",
 					theme: "Global palette",
 					unknownTheme: "Palette when the model is unknown",
@@ -290,6 +292,7 @@ const GHOST_LEAD_MS = 180;
 	inset: 0;
 	width: 100%;
 	height: 100%;
+	overflow: visible;
 }
 /* The halo's softness is baked into its radial gradient: a CSS blur forced the
    whole 320px tail through a fresh blur rasterisation every frame. The radius
@@ -384,6 +387,7 @@ const GHOST_LEAD_MS = 180;
 					],
 					// White sparks drifting inside the trail.
 					particles: true,
+					particleCount: 26,
 				},
 				// OpenAI: black-on-white brand, accented with the old ChatGPT
 				// teal #10A37F - a sage/graphite ramp, clearly greener and
@@ -463,6 +467,31 @@ const GHOST_LEAD_MS = 180;
 						["45%", "rgba(66,133,244,0.44)"],
 						["100%", "rgba(234,67,53,0)"],
 					],
+				},
+				// Gemini娘 (Gemini Muse): the persona palette. Near-black violet body that
+				// lifts into electric purple and lands on a champagne-gold head, with gold
+				// sparks drifting in the trail. Hue-distinct from the Google four-colour
+				// `gemini` ramp on purpose, so the two read as different characters.
+				geminimuse: {
+					key: "geminimuse",
+					label: "Gemini娘",
+					stops: [
+						["0%", "rgba(38,18,74,0)"],
+						["18%", "rgba(58,28,110,0.55)"],
+						["42%", "#5b2bd0"],
+						["66%", "#a855f7"],
+						["86%", "#e9c86a"],
+						["100%", "#fff6dd"],
+					],
+					core: "#fff2c9",
+					glow: [
+						["0%", "rgba(255,214,140,0.95)"],
+						["45%", "rgba(150,86,255,0.52)"],
+						["100%", "rgba(88,40,170,0)"],
+					],
+					particles: true,
+					particleColor: "#ffd166",
+					particleCount: 26,
 				},
 				// Qwen: a genuinely deep blue ramp (no purple), from the dark
 				// cobalt body up to a pale ice head.
@@ -654,14 +683,16 @@ const GHOST_LEAD_MS = 180;
 				return THEMES[k] || null;
 			}
 
-			function themeForModel(info, fallbackKey) {
+			function themeForModel(info, fallbackKey, geminiMuse) {
 				const fallback = themeByKey(fallbackKey) || THEMES.unknown;
-				if (!info) return fallback;
 				const key =
 					themeKeyForText(info.modelId) ||
 					themeKeyForText(info.modelName) ||
 					themeKeyForText(info.domText) ||
 					themeKeyForText(info.providerId);
+				// Gemini is the only vendor with a second, optional persona palette; the
+				// switch reshades that one model and leaves every other palette alone.
+				if (geminiMuse && key === "gemini") return THEMES.geminimuse;
 				return THEMES[key] || fallback;
 			}
 
@@ -882,6 +913,7 @@ const GHOST_LEAD_MS = 180;
 			const selectSpeed = fieldNumber("speed");
 			const selectSweep = fieldNumber("sweep");
 			const selectModelColor = fieldBoolean("modelColor");
+			const selectGeminiMuse = fieldBoolean("geminiMuse");
 			const selectEdgeGlow = fieldBoolean("edgeGlow");
 			function fieldText(name) {
 				return function (value) {
@@ -2505,6 +2537,12 @@ function returnPath(from, ring) {
 						return n;
 					}
 
+					// Meteor-trail sparks: the head's recent positions are the emitters,
+					// each spark keeps its own lifetime/stagger, so the spray is decoupled
+					// from where the band happens to be this instant.
+					const DOT_HIST_MS = 1200;
+					const DOT_SPREAD_MS = 380;
+					const dotHist = [];
 					let raf = 0;
 					// Spin state kept across frames: `base` is the loop phase we
 					// integrate ourselves, `dir` eases towards the requested spin so
@@ -2818,6 +2856,15 @@ function returnPath(from, ring) {
 							// every frame was the loop's busiest attribute mutator. A quantised
 							// transform is a single write and is skipped outright while the band
 							// is parked (reversal easing, or a frozen capture).
+							// A rebuilt scene can replace the gradient node while the cached
+							// reference still points at the detached one; re-resolve it so
+							// the transform lands on the gradient the ribbon actually fills
+							// with (otherwise the ribbon paints its last stop, near-white).
+							if (nd.grad && nd.grad.isConnected === false) {
+								const gb = groupRefs.current[i];
+								nd.grad = gb ? gb.querySelector("linearGradient") : null;
+								nd.gradKey = "";
+							}
 							if (nd.grad) {
 								const gdx = headPt.x - tailPt.x;
 								const gdy = headPt.y - tailPt.y;
@@ -2888,20 +2935,51 @@ function returnPath(from, ring) {
 								}
 							}
 
-							// Kimi's white sparks drift inside the trail.
+							// Sparks are *left behind* by the moving head, like a meteor trail:
+							// each is born where the head was a while ago, then drifts on its own
+							// and fades - decoupled from where the band is now.
 							if (nd.dots && nd.dots.length) {
-								for (let j = 0; j < nd.dots.length; j++) {
-									const u = 0.06 + (j / nd.dots.length) * 0.9;
-									const pt = track.at(wrapArc(track, headS - dirNow * u * lenNow));
-									const a = (pt.angle * Math.PI) / 180;
-									const sway = Math.sin(elapsed / 620 + j * 2.1) * halfNow * 0.85;
-									const ca = Math.cos(a);
-									const sa = Math.sin(a);
+								let hist = dotHist[i] || (dotHist[i] = []);
+								hist.push({ t: elapsed, x: headPt.x, y: headPt.y });
+								while (hist.length && hist[0].t < elapsed - DOT_HIST_MS) hist.shift();
+								// Where the head was at time tk (clamped to the retained tail).
+								const at = (tk) => {
+									const n = hist.length;
+									if (!n) return headPt;
+									if (tk <= hist[0].t) return hist[0];
+									if (tk >= hist[n - 1].t) return hist[n - 1];
+									let lo = 0, hi = n - 1;
+									while (lo + 1 < hi) {
+										const mid = (lo + hi) >> 1;
+										if (hist[mid].t <= tk) lo = mid; else hi = mid;
+									}
+									const a2 = hist[lo], b2 = hist[hi];
+									const u = (tk - a2.t) / Math.max(1, b2.t - a2.t);
+									return { x: a2.x + (b2.x - a2.x) * u, y: a2.y + (b2.y - a2.y) * u };
+								};
+								const count = nd.dots.length;
+								for (let j = 0; j < count; j++) {
+									// Deterministic per-spark constants (index only -> lab and plugin agree).
+									const r2 = Math.abs(Math.sin(j * 78.2330 + 1.7321) * 24634.6345) % 1;
+									const r3 = Math.abs(Math.sin(j * 39.3460 + 9.2811) * 56445.2341) % 1;
+									const r4 = Math.abs(Math.sin(j * 5.7730 + 6.1717) * 37129.1234) % 1;
+									const T = 260 + (j % 5) * 50;                       // lifetime (ms)
+									const off = (j % count) * (DOT_SPREAD_MS / count); // stagger
+									const k = Math.floor((elapsed + off) / T);
+									const born = k * T - off;                           // fixed while k holds
+									const age = elapsed - born;                         // [0, T)
+									const sp = at(born);                                // where the head *was*
+									// Fly off in every direction from that fossil point, so the trail
+									// scatters outward (even past the frame) instead of hugging the band.
+									const ang = r2 * 6.2831853 + Math.sin(elapsed / 820 + j * 1.7) * 0.25;
+									const v = 0.04 + r4 * 0.10;                        // px per ms
+									const dist = v * age;
+									const life = age / T;
 									const node = nd.dots[j];
-									node.setAttribute("cx", (pt.x + ca * sway).toFixed(1));
-									node.setAttribute("cy", (pt.y + sa * sway).toFixed(1));
-									node.setAttribute("r", (0.55 + 0.55 * Math.abs(Math.sin(elapsed / 900 + j * 1.3))).toFixed(2));
-									node.setAttribute("opacity", (0.25 + 0.7 * Math.abs(Math.sin(elapsed / 700 + j * 0.9))).toFixed(2));
+									node.setAttribute("cx", (sp.x + Math.cos(ang) * dist).toFixed(1));
+									node.setAttribute("cy", (sp.y + Math.sin(ang) * dist).toFixed(1));
+									node.setAttribute("r", ((1.0 + r3 * 1.3) * (1 - 0.45 * life)).toFixed(2));
+									node.setAttribute("opacity", (0.95 * Math.min(1, life / 0.14) * Math.pow(1 - life, 1.05)).toFixed(2));
 								}
 							}
 						}
@@ -3045,16 +3123,16 @@ function returnPath(from, ring) {
 					}));
 					if (bt.particles) {
 						const dots = [];
-						for (let j = 0; j < 12; j++) {
+						for (let j = 0; j < (bt.particleCount || 12); j++) {
 							dots.push(h("circle", {
 								key: "dot-" + j,
 								"data-r": "dot",
 								cx: "0", cy: "0", r: "0.9",
-								fill: "#ffffff",
+								fill: bt.particleColor || "#ffffff",
 								opacity: "0.6",
 							}));
 						}
-						kids.push(h("g", { key: "dots" }, dots));
+						kids.push(h("g", { key: "dots", style: { filter: "blur(0.35px)" } }, dots));
 					}
 					comets.push(h("g", {
 						key: "comet-" + i,
@@ -3092,9 +3170,9 @@ function returnPath(from, ring) {
 						h("mask", {
 							id: MASK_ID,
 							maskUnits: "userSpaceOnUse",
-							x: "0", y: "0", width: String(w), height: String(hgt),
+							x: "-240", y: "-240", width: String(w + 480), height: String(hgt + 480),
 						},
-							h("rect", { x: "0", y: "0", width: String(w), height: String(hgt), fill: "#fff" }),
+							h("rect", { x: "-240", y: "-240", width: String(w + 480), height: String(hgt + 480), fill: "#fff" }),
 							h("rect", {
 								x: String(chromeX), y: "0",
 								width: String(chromeW), height: String(chromeH),
@@ -3288,7 +3366,7 @@ function returnPath(from, ring) {
 			// buttons scattered through the form, so instead: one skeleton for
 			// every row (title line, control, hint) and a single reset in the
 			// action row beside Save, which clears every override at once.
-			const SETTING_KEYS = ["trailLength", "thickness", "sweep", "speed", "modelColor", "edgeGlow", "theme", "unknownTheme"];
+			const SETTING_KEYS = ["trailLength", "thickness", "sweep", "speed", "modelColor", "geminiMuse", "edgeGlow", "theme", "unknownTheme"];
 
 			function MarqueeSettings(props) {
 				const t = useUiStrings();
@@ -3360,8 +3438,8 @@ function returnPath(from, ring) {
 						onChange: (e) => { try { props.edit(name, e.target.value); } catch (err) { /* noop */ } },
 					}));
 
-				const switchRow = (name, label, hint) => {
-					const checked = boolOf(name, true);
+				const switchRow = (name, label, hint, def) => {
+					const checked = boolOf(name, def === void 0 ? true : def);
 					const onToggle = (next) => {
 						try { props.edit(name, next === true ? "true" : "false"); } catch (e) { /* noop */ }
 					};
@@ -3420,6 +3498,7 @@ function returnPath(from, ring) {
 					numberRow("speed", t("speed"), t("speedHint")),
 					switchRow("modelColor", t("modelColor")),
 					switchRow("edgeGlow", t("edgeGlow")),
+					!modelColorOff ? switchRow("geminiMuse", t("geminiMuse"), null, false) : null,
 					modelColorOff ? selectRow("theme", t("theme")) : null,
 					selectRow("unknownTheme", t("unknownTheme")),
 					h("div", { className: CLS.footer },
@@ -3478,6 +3557,7 @@ function returnPath(from, ring) {
 				const speedCfg = useForm ? useForm(selectSpeed) : null;
 				const sweepCfg = useForm ? useForm(selectSweep) : null;
 				const modelColorCfg = useForm ? useForm(selectModelColor) : null;
+				const geminiMuseCfg = useForm ? useForm(selectGeminiMuse) : null;
 				const themeCfg = useForm ? useForm(selectTheme) : null;
 				const unknownThemeCfg = useForm ? useForm(selectUnknownTheme) : null;
 				const trail = clampNumber(trailCfg, TRAIL_MIN, TRAIL_MAX, DEFAULT_TRAIL);
@@ -3498,6 +3578,8 @@ function returnPath(from, ring) {
 				// every host theme flip instead of latching at mount.
 				const lightSurface = useLightSurface();
 				const modelColor = modelColorCfg === null || modelColorCfg === void 0 ? true : modelColorCfg === true;
+				// Gemini 娘配色开关：仅在按模型自动配色时生效，默认关（保持 Google 品牌色）。
+				const geminiMuse = geminiMuseCfg === null || geminiMuseCfg === void 0 ? false : geminiMuseCfg === true;
 				// When automatic colouring is off the whole plugin uses one palette the
 				// user picked; "unknownTheme" is the fallback for models we cannot name.
 				const unknownKey = unknownThemeCfg == null || String(unknownThemeCfg).trim() === "" ? "prism" : String(unknownThemeCfg).trim();
@@ -3541,7 +3623,7 @@ function returnPath(from, ring) {
 					domText: modelInfo.domText || "",
 					providerId: (currentRow && currentRow.providerId) || modelInfo.providerId || "",
 				};
-				const theme = modelColor ? themeForModel(mergedModel, unknownKey) : manualTheme;
+				const theme = modelColor ? themeForModel(mergedModel, unknownKey, geminiMuse) : manualTheme;
 
 				// One band per thinking conversation, in a stable order, so band i
 				// and its ghost always name the same session.
@@ -3582,7 +3664,7 @@ function returnPath(from, ring) {
 						const row = liveRows[k];
 						if (!row || row.id !== id) continue;
 						const own = modelColor
-							? themeForModel({ modelId: row.modelId || "", modelName: "", domText: "", providerId: row.providerId || "" }, unknownKey)
+							? themeForModel({ modelId: row.modelId || "", modelName: "", domText: "", providerId: row.providerId || "" }, unknownKey, geminiMuse)
 							: manualTheme;
 						bt = own;
 						break;
@@ -3759,7 +3841,7 @@ function returnPath(from, ring) {
 								modelName: "",
 								domText: "",
 								providerId: row ? row.providerId : "",
-							}, unknownKey)
+							}, unknownKey, geminiMuse)
 							: manualTheme;
 						next.set(id, { index: i, theme: palette });
 					}
@@ -4145,6 +4227,7 @@ function returnPath(from, ring) {
 							// an empty value and silently drops the user's edit (that is
 							// what happened to the edge glow switch when it came back).
 							settingsBooleanField("edgeGlow"),
+							settingsBooleanField("geminiMuse"),
 							settingsText("theme"),
 							settingsText("unknownTheme"),
 						]);
@@ -4156,6 +4239,7 @@ function returnPath(from, ring) {
 							sweep: form.field("sweep"),
 							modelColor: form.field("modelColor"),
 							edgeGlow: form.field("edgeGlow"),
+							geminiMuse: form.field("geminiMuse"),
 							theme: form.field("theme"),
 							unknownTheme: form.field("unknownTheme"),
 						}));

@@ -40,9 +40,12 @@
 	}
 
 	// ---------------------------------------------------------------- scene
-	var svg = el("svg", { width: "100%", height: "100%", style: "position:absolute;inset:0" });
+	var svg = el("svg", { width: "100%", height: "100%", style: "position:absolute;inset:0;overflow:visible" });
 	var defs = el("defs");
 	var mask = el("mask", { id: M.MASK_ID, maskUnits: "userSpaceOnUse", x: "0", y: "0", maskContentUnits: "userSpaceOnUse" });
+	var DOT_HIST_MS = 1200;
+	var DOT_SPREAD_MS = 380;
+	var dotHist = [];
 	svg.appendChild(defs);
 	overlay.appendChild(svg);
 
@@ -233,6 +236,7 @@ var settles = {};
 			if (nd.edge) nd.edge.setAttribute("d", "");
 			if (nd.head) { nd.head.setAttribute("cx", "0"); nd.head.setAttribute("cy", "0"); }
 			if (nd.glow) nd.glow.setAttribute("r", "0");
+			if (nd.dots) for (var dz = 0; dz < nd.dots.length; dz++) nd.dots[dz].setAttribute("opacity", "0");
 			if (nd.g) nd.g.style.opacity = "0";
 		}
 		grabs = [];
@@ -385,42 +389,58 @@ var settles = {};
 	}
 
 	function buildDefs() {
-		while (defs.firstChild) defs.removeChild(defs.firstChild);
-		defs.appendChild(mask);
+		// Reuse the gradient elements by id instead of recreating them: the band
+		// and ghost views capture their gradient node once, so replacing the node
+		// here would leave those references pointing at a detached element - the
+		// per-frame transform write would go nowhere and the ribbon would paint
+		// its last stop (near-white) instead of the theme ramp.
+		function ensureGrad(tag, id) {
+			var g = defs.querySelector('[id="' + id + '"]');
+			if (!g) { g = el(tag, { id: id }); defs.appendChild(g); }
+			while (g.firstChild) g.removeChild(g.firstChild);
+			return g;
+		}
+		if (mask.parentNode !== defs) defs.appendChild(mask);
 		var light = isLight();
 		for (var gi = 0; gi < 4; gi++) {
 			var gt = bandTheme(gi);
-			var glow = el("radialGradient", { id: "lab-glow-" + gi });
+			var glow = ensureGrad("radialGradient", "lab-glow-" + gi);
 			var gstops = light
 				? [[0, hexToRgba(mixHex(lightBodyTone(gt), "#000000", 0.06), 0.30)], [0.5, hexToRgba(lightBodyTone(gt), 0.14)], [1, hexToRgba(lightBodyTone(gt), 0)]]
 				: (gt.glow || [[0, "rgba(255,255,255,0.9)"], [1, "rgba(255,255,255,0)"]]);
 			gstops.forEach(function (s) {
 				glow.appendChild(el("stop", { offset: stopOffset(s[0]), "stop-color": s[1] }));
 			});
-			defs.appendChild(glow);
 		}
-		var glow = null;
 		for (var i = 0; i < 4; i++) {
 			// Unit ramp; the frame loop maps it onto tail->head with one transform.
-	var g = el("linearGradient", { id: "lab-grad-" + i, gradientUnits: "userSpaceOnUse", x1: "0", y1: "0", x2: "1", y2: "0" });
+			var g = ensureGrad("linearGradient", "lab-grad-" + i);
+			g.setAttribute("gradientUnits", "userSpaceOnUse");
+			g.setAttribute("x1", "0"); g.setAttribute("y1", "0");
+			g.setAttribute("x2", "1"); g.setAttribute("y2", "0");
+			g.removeAttribute("gradientTransform");
 			var bstops = light ? lightStops(bandTheme(i)) : bandTheme(i).stops;
 			bstops.forEach(function (s) {
 				g.appendChild(el("stop", { offset: stopOffset(s[0]), "stop-color": s[1] }));
 			});
-			defs.appendChild(g);
 		}
 	}
 
 	function buildMask() {
 		while (mask.firstChild) mask.removeChild(mask.firstChild);
-		mask.appendChild(el("rect", { x: "0", y: "0", width: W, height: H, fill: "#fff" }));
+		mask.setAttribute("x", "-240"); mask.setAttribute("y", "-240");
+		mask.setAttribute("width", String(W + 480)); mask.setAttribute("height", String(H + 480));
+		mask.appendChild(el("rect", { x: "-240", y: "-240", width: W + 480, height: H + 480, fill: "#fff" }));
 		// The native caption buttons sit above the webview: nothing drawn there
 		// is visible, so the mask cuts the strip out with a short ramp.
 		var cw = M.CHROME_W;
 		var ch = M.CHROME_H;
 		var f = M.CHROME_FEATHER;
 		mask.appendChild(el("rect", { x: W - cw, y: "0", width: cw, height: ch, fill: "#000" }));
-		var gx = el("linearGradient", { id: "lab-feather-x", x1: "0", y1: "0", x2: "1", y2: "0" });
+		var gx = defs.querySelector('[id="lab-feather-x"]');
+		if (!gx) { gx = el("linearGradient", { id: "lab-feather-x" }); defs.appendChild(gx); }
+		while (gx.firstChild) gx.removeChild(gx.firstChild);
+		gx.setAttribute("x1", "0"); gx.setAttribute("y1", "0"); gx.setAttribute("x2", "1"); gx.setAttribute("y2", "0");
 		gx.appendChild(el("stop", { offset: "0", "stop-color": "#fff" }));
 		gx.appendChild(el("stop", { offset: "1", "stop-color": "#000" }));
 		defs.appendChild(gx);
@@ -465,8 +485,21 @@ var settles = {};
 				}
 			}
 			g.appendChild(head);
+			// Palettes that ask for sparks (Kimi white, Gemini娘 gold).
+			var dots = [];
+			if (t.particles) {
+				var dcount = t.particleCount || 12;
+				var dcolor = t.particleColor || "#ffffff";
+				var dotGroup = el("g", { style: "filter:blur(0.35px)" });
+				for (var di = 0; di < dcount; di++) {
+					var dot = el("circle", { cx: "0", cy: "0", r: "0.9", fill: dcolor, opacity: "0.6" });
+					dots.push(dot);
+					dotGroup.appendChild(dot);
+				}
+				g.appendChild(dotGroup);
+			}
 			group.appendChild(g);
-			bandNodes.push({ g: g, path: path, edge: edge, outline: outline, head: head, glow: glow, rim: rim, lanes: lanes, grad: defs.querySelector("#lab-grad-" + i) });
+			bandNodes.push({ g: g, path: path, edge: edge, outline: outline, head: head, glow: glow, rim: rim, lanes: lanes, dots: dots, grad: defs.querySelector("#lab-grad-" + i) });
 		}
 	}
 
@@ -480,7 +513,7 @@ var settles = {};
 	var themeEl = document.getElementById("theme");
 	// Same order and the same names the plugin's own settings panel shows, so the
 	// lab cannot disagree with the app about which palette is which.
-	var themeOrder = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "qwen", "grok", "minimax", "mimo", "meta", "nvidia", "unknown"];
+	var themeOrder = ["deepseek", "kimi", "openai", "claude", "zhipu", "gemini", "geminimuse", "qwen", "grok", "minimax", "mimo", "meta", "nvidia", "unknown"];
 	themeKeys = themeOrder.filter(function (k) { return !!M.THEMES[k]; })
 		.concat(themeKeys.filter(function (k) { return themeOrder.indexOf(k) < 0; }));
 	themeKeys.forEach(function (k) {
@@ -943,16 +976,26 @@ var settles = {};
 		var path = M.returnPath(from, ring);
 		var g = el("g", {});
 		g.style.opacity = "0";
-		// Same gradient the band itself was painting with, so the colour never
-		// changes mid-flight (per-band palettes included).
+		// Each ghost owns its own gradient element: the live band drives
+		// lab-grad-k with a gradientTransform, so sharing it would let the two
+		// writers fight and, after a rebuild, leave the ghost pointing at a
+		// detached element (the ribbon then paints its last stop, near-white).
+		var ghostGradId = "lab-ghost-grad-" + ghostSpawns;
+		var ghostGrad = null;
+		if (defs) {
+			ghostGrad = el("linearGradient", { id: ghostGradId, gradientUnits: "userSpaceOnUse", x1: "0", y1: "0", x2: "1", y2: "0" });
+			var tStops = isLight() ? lightStops(t) : (t.stops || []);
+			tStops.forEach(function (s) { ghostGrad.appendChild(el("stop", { offset: stopOffset(s[0]), "stop-color": s[1] })); });
+			defs.appendChild(ghostGrad);
+		}
 		var glow = el("circle", { cx: "0", cy: "0", r: "0", fill: "url(#lab-glow-" + k + ")", style: "opacity:0" });
-		var path2 = el("path", { d: "", fill: "url(#lab-grad-" + k + ")", opacity: "1" });
+		var path2 = el("path", { d: "", fill: defs ? "url(#" + ghostGradId + ")" : "none", opacity: "1" });
 		var head = el("circle", { cx: "0", cy: "0", r: half(), fill: isLight() ? lightHeadColor(t) : t.core, opacity: "1" });
 		g.appendChild(glow);
 		g.appendChild(path2);
 		g.appendChild(head);
 		ghostHost.appendChild(g);
-		var grad = defs ? defs.querySelector("#lab-grad-" + k) : null;
+		var grad = ghostGrad;
 		// The speed profile is 1 - A*cos(2*pi*p): its slope peaks a quarter lap off
 		// a corner. Wait for the next peak and leave carrying exactly that speed.
 		var amp = M.getSweepAmp ? M.getSweepAmp() : 0.62;
@@ -969,7 +1012,7 @@ var settles = {};
 		// px / (px/ms) is already ms; scaling by 1000 here made the hop ~26min long.
 		var dur = Math.max(240, (path.leg + path.lap) / (exitSpeed / 1.57));
 		ghostSpawns += 1;
-		ghosts.push({ g: g, path: path2, head: head, glow: glow, grad: grad, slot: k, at: clock + wait, dur: dur, wait: wait, uNow: 0, pathData: path });
+		ghosts.push({ g: g, path: path2, head: head, glow: glow, grad: grad, gradId: ghostGradId, slot: k, at: clock + wait, dur: dur, wait: wait, uNow: 0, pathData: path });
 	}
 
 	// The band is gone for good: the survivors keep their phases and re-space
@@ -1023,6 +1066,13 @@ var settles = {};
 	}
 
 	function clearGhosts() {
+		// Drop each ghost's own gradient too, otherwise cancelled ghosts leave
+		// their lab-ghost-grad-N elements behind in defs.
+		for (var ci = 0; ci < ghosts.length; ci++) {
+			var gid = ghosts[ci].gradId;
+			var gel = defs ? defs.querySelector('[id="' + gid + '"]') : null;
+			if (gel) gel.remove();
+		}
 		ghosts = [];
 		while (ghostHost && ghostHost.firstChild) ghostHost.removeChild(ghostHost.firstChild);
 	}
@@ -1189,6 +1239,50 @@ var settles = {};
 					nd.glow.setAttribute("cy", headPt.y.toFixed(1));
 					nd.glow.setAttribute("r", (hL * 3.4).toFixed(2));
 				}
+				// Sparks are left behind by the moving head, like a meteor trail:
+				// each is born where the head was a while ago, then drifts on its own
+				// and fades - decoupled from where the band is now.
+				if (nd.dots && nd.dots.length) {
+					var hist = dotHist[i] || (dotHist[i] = []);
+					hist.push({ t: now, x: headPt.x, y: headPt.y });
+					while (hist.length && hist[0].t < now - DOT_HIST_MS) hist.shift();
+					var at = function (tk) {
+						var n = hist.length;
+						if (!n) return headPt;
+						if (tk <= hist[0].t) return hist[0];
+						if (tk >= hist[n - 1].t) return hist[n - 1];
+						var lo = 0, hi = n - 1;
+						while (lo + 1 < hi) {
+							var mid = (lo + hi) >> 1;
+							if (hist[mid].t <= tk) lo = mid; else hi = mid;
+						}
+						var a2 = hist[lo], b2 = hist[hi];
+						var u = (tk - a2.t) / Math.max(1, b2.t - a2.t);
+						return { x: a2.x + (b2.x - a2.x) * u, y: a2.y + (b2.y - a2.y) * u };
+					};
+					var dn = nd.dots.length;
+					for (var dj = 0; dj < dn; dj++) {
+						var r2 = Math.abs(Math.sin(dj * 78.2330 + 1.7321) * 24634.6345) % 1;
+						var r3 = Math.abs(Math.sin(dj * 39.3460 + 9.2811) * 56445.2341) % 1;
+						var r4 = Math.abs(Math.sin(dj * 5.7730 + 6.1717) * 37129.1234) % 1;
+						var T = 260 + (dj % 5) * 50;
+						var off = (dj % dn) * (DOT_SPREAD_MS / dn);
+						var kk = Math.floor((now + off) / T);
+						var born = kk * T - off;
+						var age = now - born;
+						var sp = at(born);
+						var ang = r2 * 6.2831853 + Math.sin(now / 820 + dj * 1.7) * 0.25;
+						var v = 0.04 + r4 * 0.10;
+						var dist = v * age;
+						var life = age / T;
+						var nDot = nd.dots[dj];
+						nDot.setAttribute("cx", (sp.x + Math.cos(ang) * dist).toFixed(1));
+						nDot.setAttribute("cy", (sp.y + Math.sin(ang) * dist).toFixed(1));
+						nDot.setAttribute("r", ((1.0 + r3 * 1.3) * (1 - 0.45 * life)).toFixed(2));
+						nDot.setAttribute("opacity", (0.95 * Math.min(1, life / 0.14) * Math.pow(1 - life, 1.05)).toFixed(2));
+					}
+				}
+				if (nd.grad && nd.grad.isConnected === false) { try { nd.grad = defs.querySelector("#lab-grad-" + i); } catch (e2) { nd.grad = null; } }
 				if (nd.grad) {
 					// One quantised transform instead of four coordinates.
 					var gdx = headPt.x - tailPt.x, gdy = headPt.y - tailPt.y;
@@ -1221,11 +1315,15 @@ var settles = {};
 			for (var q = 0; q < 34; q++) pts3.push(gh.pathData.at(Math.max(0, s - tl2 * (q / 33))));
 			gh.path.setAttribute("d", pts3.length > 1 ? M.polyRibbon(pts3, h) : "");
 			if (gh.grad) {
+				if (gh.grad.isConnected === false) { try { gh.grad = defs ? defs.querySelector('[id="' + gh.gradId + '"]') : null; } catch (e2) { gh.grad = null; } }
 				var tailP = gh.pathData.at(Math.max(0, s - tl2));
-				gh.grad.setAttribute("x1", tailP.x.toFixed(1));
-				gh.grad.setAttribute("y1", tailP.y.toFixed(1));
-				gh.grad.setAttribute("x2", pl.x.toFixed(1));
-				gh.grad.setAttribute("y2", pl.y.toFixed(1));
+				var gdx2 = pl.x - tailP.x, gdy2 = pl.y - tailP.y;
+				var glen2 = Math.sqrt(gdx2 * gdx2 + gdy2 * gdy2) || 1;
+				var gtx = Math.round(tailP.x * 4) / 4, gty = Math.round(tailP.y * 4) / 4;
+				var gat = Math.round(Math.atan2(gdy2, gdx2) * 360 / (Math.PI * 2) * 4) / 4;
+				var gln = Math.round(glen2 * 10) / 10;
+				var gk2 = gtx + "," + gty + "," + gat + "," + gln;
+				if (gh.gradKey !== gk2) { gh.gradKey = gk2; gh.grad.setAttribute("gradientTransform", "translate(" + gtx + " " + gty + ") rotate(" + gat + ") scale(" + gln + " 1)"); }
 			}
 			var fade = u < 0.62 ? 1 : Math.max(0, 1 - (u - 0.62) / 0.38);
 			gh.path.setAttribute("opacity", String(fade));
@@ -1238,6 +1336,8 @@ var settles = {};
 			gh.glow.setAttribute("opacity", String(fade * 0.7));
 			if (u >= 1) {
 				gh.g.remove();
+				var gge = defs ? defs.querySelector('[id="' + gh.gradId + '"]') : null;
+				if (gge) gge.remove();
 				ghosts.splice(gi, 1);
 				finishRetire(gh.slot);
 			}

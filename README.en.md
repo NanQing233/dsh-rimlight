@@ -65,13 +65,14 @@ The gradient runs tail → head. The table lists the solid stops (the tail start
 | key | Name | Gradient (tail → head) | Notes |
 | --- | --- | --- | --- |
 | `deepseek` | DeepSeek | `#2f6bff` → `#5b8dff` → `#eaf2ff` | — |
-| `kimi` | Kimi | `#8f97a8` → `#e6eaf2` → `#ffffff` | Sparks floating in the tail |
+| `kimi` | Kimi | `#8f97a8` → `#e6eaf2` → `#ffffff` | White sparks |
 | `openai` | OpenAI | `#6f9b8b` → `#cfe6dd` → `#f4fffa` | — |
 | `claude` | Claude | `#e07a4f` → `#b64f28` → `#ffeada` | — |
 | `zhipu` | GLM | `#7285ab` → `#bccce8` → `#f4f8ff` | — |
 | `gemini` | Gemini | `#34a853` → `#fbbc05` → `#ea4335` → `#ffffff` | Google's four colours |
+| `geminimuse` | Gemini Muse | `#5b2bd0` → `#a855f7` → `#e9c86a` → `#fff6dd` | Gold sparks; Gemini-only, toggled by `geminiMuse`, not in the dropdown |
 | `qwen` | Qwen | `#1d3fd6` → `#3f6bff` → `#dbe6ff` | — |
-| `grok` | Grok | `#141518` → `#c9ccd4` → `#ffffff` | Black → white |
+| `grok` | Grok | `#141518` → `#c9ccd4` → `#ffffff` | — |
 | `minimax` | MiniMax | `#ff5fc0` → `#ff2d63` → `#ffdcec` | — |
 | `mimo` | MiMo | `#f6edc8` → `#fcf7e6` → `#fffefa` | — |
 | `meta` | Meta | `#2f7bff` → `#0866ff` → `#e2eeff` | — |

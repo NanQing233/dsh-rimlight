@@ -67,13 +67,14 @@
 | key | 名称 | 渐变（尾 → 头） | 特征 |
 | --- | --- | --- | --- |
 | `deepseek` | DeepSeek | `#2f6bff` → `#5b8dff` → `#eaf2ff` | — |
-| `kimi` | Kimi | `#8f97a8` → `#e6eaf2` → `#ffffff` | 尾部漂浮粒子 |
+| `kimi` | Kimi | `#8f97a8` → `#e6eaf2` → `#ffffff` | 白色粒子效果 |
 | `openai` | OpenAI | `#6f9b8b` → `#cfe6dd` → `#f4fffa` | — |
 | `claude` | Claude | `#e07a4f` → `#b64f28` → `#ffeada` | — |
 | `zhipu` | GLM | `#7285ab` → `#bccce8` → `#f4f8ff` | — |
 | `gemini` | Gemini | `#34a853` → `#fbbc05` → `#ea4335` → `#ffffff` | Google 四色 |
+| `geminimuse` | Gemini娘 | `#5b2bd0` → `#a855f7` → `#e9c86a` → `#fff6dd` | 金色粒子效果；Gemini 配色选项，通过 `geminiMuse` 开关切换 |
 | `qwen` | Qwen | `#1d3fd6` → `#3f6bff` → `#dbe6ff` | — |
-| `grok` | Grok | `#141518` → `#c9ccd4` → `#ffffff` | 黑→白 |
+| `grok` | Grok | `#141518` → `#c9ccd4` → `#ffffff` | — |
 | `minimax` | MiniMax | `#ff5fc0` → `#ff2d63` → `#ffdcec` | — |
 | `mimo` | MiMo | `#f6edc8` → `#fcf7e6` → `#fffefa` | — |
 | `meta` | Meta | `#2f7bff` → `#0866ff` → `#e2eeff` | — |
@@ -135,6 +136,7 @@ dsh plugin --profile desktop remove dsh-rimlight
 | 扫掠幅度 `sweep` | 0.62 | 0–0.95 | 一圈内的速度呼吸：`0` 为匀速，取值越大则拐角越慢、直边越快；改动在 200 ms 内平滑生效 |
 | 边缘泛光 `edgeGlow` | 开 | — | 光带两侧的高光与柔光|
 | 根据对话使用模型自动选择配色 `modelColor` | 开 | — | 关闭后使用「全局配色」 |
+| Gemini 模型配色 `geminiMuse` | 关 | — | 开启后 Gemini 使用「Gemini娘」黑紫渐变 + 金色粒子；关闭则用 Google 品牌四色。仅在自动配色开启时显示 |
 | 全局配色 `theme` | — | 13 套 | 仅在关闭自动配色后显示 |
 | 无法识别时使用的配色 `unknownTheme` | Prism | 13 套 | 模型名无法识别时使用 |
 
